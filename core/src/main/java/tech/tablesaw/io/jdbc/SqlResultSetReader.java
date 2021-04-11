@@ -14,8 +14,8 @@
 
 package tech.tablesaw.io.jdbc;
 
-import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.io.BaseEncoding;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
@@ -61,6 +61,7 @@ public class SqlResultSetReader {
             .put(Types.SMALLINT, ColumnType.SHORT)
             .put(Types.TINYINT, ColumnType.SHORT)
             .put(Types.BINARY, ColumnType.STRING)
+            .put(Types.VARBINARY, ColumnType.STRING)
             .put(Types.CHAR, ColumnType.STRING)
             .put(Types.NCHAR, ColumnType.STRING)
             .put(Types.NVARCHAR, ColumnType.STRING)
@@ -96,11 +97,16 @@ public class SqlResultSetReader {
       ColumnType type =
           getColumnType(metaData.getColumnType(i), metaData.getScale(i), metaData.getPrecision(i));
 
-      Preconditions.checkState(
-          type != null,
-          "No column type found for %s as specified for column %s",
-          metaData.getColumnType(i),
-          metaData.getColumnName(i));
+      if (type == null) {
+        // since there is no proper handling for custom types or bytes
+        // need to handle properly
+        type = ColumnType.STRING;
+      }
+      //      Preconditions.checkState(
+      //          type != null,
+      //          "No column type found for %s as specified for column %s",
+      //          metaData.getColumnType(i),
+      //          metaData.getColumnName(i));
 
       Column<?> newColumn = type.create(metaData.getColumnLabel(i));
       table.addColumns(newColumn);
@@ -124,7 +130,13 @@ public class SqlResultSetReader {
         } else if (column instanceof BooleanColumn) {
           appendToColumn(column, resultSet, resultSet.getBoolean(i));
         } else {
-          column.appendObj(resultSet.getObject(i));
+          Object object = resultSet.getObject(i);
+          if (object instanceof byte[]) {
+            byte[] bytes = (byte[]) object;
+            column.appendObj(BaseEncoding.base16().upperCase().encode(bytes));
+          } else {
+            column.appendObj(object);
+          }
         }
       }
     }
