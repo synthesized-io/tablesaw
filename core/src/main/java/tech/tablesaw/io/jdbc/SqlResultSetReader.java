@@ -134,6 +134,10 @@ public class SqlResultSetReader {
           if (object instanceof byte[]) {
             byte[] bytes = (byte[]) object;
             column.appendObj(BaseEncoding.base16().upperCase().encode(bytes));
+          } else if (object != null
+              && (object.getClass().getName().equals("oracle.sql.CLOB")
+                  || object.getClass().getName().equals("oracle.sql.BLOB"))) {
+            column.appendObj(object.toString());
           } else {
             column.appendObj(object);
           }
