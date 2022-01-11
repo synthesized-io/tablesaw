@@ -50,7 +50,7 @@ import tech.tablesaw.filtering.predicates.BytePredicate;
 import tech.tablesaw.selection.BitmapBackedSelection;
 import tech.tablesaw.selection.Selection;
 
-/** A column in a base table that contains float values */
+/** A column that contains boolean values */
 public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     implements BooleanFilterSpec<Selection>,
         BooleanMapUtils,
@@ -58,8 +58,10 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
         BooleanFillers<BooleanColumn>,
         BooleanFilters {
 
-  private ByteArrayList data;
+  /** The data held by this column */
+  protected ByteArrayList data;
 
+  /** An IntComparator. The ints are row indexes */
   private final IntComparator comparator =
       (r1, r2) -> {
         byte f1 = getByte(r1);
@@ -67,28 +69,47 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
         return Byte.compare(f1, f2);
       };
 
+  /** The print formatter for this column, if any */
   private BooleanFormatter formatter = new BooleanFormatter("true", "false", "");
 
+  /**
+   * Constructs a BooleanColumn with the given name and values.
+   *
+   * @param name The column name
+   * @param values The values: 0 is false, 1 is true, Byte.MIN_VALUE is the missing value indicator
+   */
   private BooleanColumn(String name, ByteArrayList values) {
-    super(BooleanColumnType.instance(), name);
+    super(BooleanColumnType.instance(), name, BooleanColumnType.DEFAULT_PARSER);
     data = values;
   }
 
+  /** Returns {@code true} if b is the missing value indicator for this column type */
   public static boolean valueIsMissing(byte b) {
     return BooleanColumnType.valueIsMissing(b);
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isMissing(int rowNumber) {
     return valueIsMissing(getByte(rowNumber));
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn setMissing(int i) {
     set(i, BooleanColumnType.missingValueIndicator());
     return this;
   }
 
+  /**
+   * Returns a new Boolean column of the given size. Elements indexed by the selection are set to
+   * true
+   *
+   * @param name The column name
+   * @param hits The true values
+   * @param columnSize The column size
+   * @return A new BooleanColumn
+   */
   public static BooleanColumn create(String name, Selection hits, int columnSize) {
     BooleanColumn column = create(name, columnSize);
     checkArgument(
@@ -102,10 +123,23 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return column;
   }
 
+  /**
+   * Returns a new, empty Boolean column with the given name.
+   *
+   * @param name The column name
+   * @return A new BooleanColumn
+   */
   public static BooleanColumn create(String name) {
     return new BooleanColumn(name, new ByteArrayList(DEFAULT_ARRAY_SIZE));
   }
 
+  /**
+   * Returns a new Boolean column of the given size. All elements are false
+   *
+   * @param name The column name
+   * @param initialSize The column size
+   * @return A new BooleanColumn
+   */
   public static BooleanColumn create(String name, int initialSize) {
     BooleanColumn column = new BooleanColumn(name, new ByteArrayList(initialSize));
     for (int i = 0; i < initialSize; i++) {
@@ -114,6 +148,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return column;
   }
 
+  /** Returns a new Boolean column with the given name and values */
   public static BooleanColumn create(String name, boolean... values) {
     BooleanColumn column = create(name, values.length);
     int r = 0;
@@ -124,6 +159,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return column;
   }
 
+  /** Returns a new Boolean column with the given name and values */
   public static BooleanColumn create(String name, Collection<Boolean> values) {
     BooleanColumn column = create(name);
     for (Boolean b : values) {
@@ -132,33 +168,39 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return column;
   }
 
-  public static BooleanColumn create(String name, Boolean[] arr) {
+  /** Returns a new Boolean column with the given name and values */
+  public static BooleanColumn create(String name, Boolean[] values) {
     BooleanColumn column = create(name);
-    for (Boolean val : arr) {
+    for (Boolean val : values) {
       column.append(val);
     }
     return column;
   }
 
-  public static BooleanColumn create(String name, Stream<Boolean> stream) {
+  /** Returns a new Boolean column with the given name and values */
+  public static BooleanColumn create(String name, Stream<Boolean> values) {
     BooleanColumn column = create(name);
-    stream.forEach(column::append);
+    values.forEach(column::append);
     return column;
   }
 
+  /** Sets the print formatter for this column */
   public void setPrintFormatter(BooleanFormatter formatter) {
     this.formatter = formatter;
   }
 
+  /** Returns the print formatter for this column */
   public BooleanFormatter getPrintFormatter() {
     return formatter;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int size() {
     return data.size();
   }
 
+  /** {@inheritDoc} */
   @Override
   public Table summary() {
     Byte2IntMap counts = new Byte2IntOpenHashMap(3);
@@ -195,6 +237,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return count;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int countUnique() {
     ByteSet count = new ByteOpenHashSet(3);
@@ -204,6 +247,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return count.size();
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn unique() {
     ByteSet count = new ByteOpenHashSet(3);
@@ -214,6 +258,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return new BooleanColumn(name() + " Unique values", list);
   }
 
+  /** Appends b to the end of this column and returns this column */
   public BooleanColumn append(boolean b) {
     if (b) {
       data.add(BooleanColumnType.BYTE_TRUE);
@@ -223,6 +268,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn append(Boolean b) {
     if (b == null) {
@@ -235,6 +281,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn appendObj(Object obj) {
     if (obj == null) {
@@ -247,22 +294,26 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return append((Boolean) obj);
   }
 
+  /** Appends b to the end of this column and returns this column */
   public BooleanColumn append(byte b) {
     data.add(b);
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn appendMissing() {
     append(BooleanColumnType.MISSING_VALUE);
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getString(int row) {
     return formatter.format(get(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getUnformattedString(int row) {
     Boolean b = get(row);
@@ -272,41 +323,49 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return String.valueOf(b);
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn emptyCopy() {
     return create(name());
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn emptyCopy(int rowSize) {
     return create(name(), rowSize);
   }
 
+  /** {@inheritDoc} */
   @Override
   public void clear() {
     data.clear();
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn copy() {
     return new BooleanColumn(name(), data.clone());
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortAscending() {
     data.sort(ByteComparators.NATURAL_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortDescending() {
     data.sort(ByteComparators.OPPOSITE_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn appendCell(String object) {
-    return append(BooleanColumnType.DEFAULT_PARSER.parseByte(object));
+    return append(parser().parseByte(object));
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn appendCell(String object, AbstractColumnParser<?> parser) {
     return append(parser.parseByte(object));
@@ -339,11 +398,13 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return data.getByte(i);
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isEmpty() {
     return data.isEmpty();
   }
 
+  /** Returns the number of {@code true} elements in this column */
   public int countTrue() {
     int count = 0;
     for (byte b : data) {
@@ -354,6 +415,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return count;
   }
 
+  /** Returns the number of {@code false} elements in this column */
   public int countFalse() {
     int count = 0;
     for (byte b : data) {
@@ -392,6 +454,8 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return countTrue() == 0;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public Selection isFalse() {
     Selection results = new BitmapBackedSelection();
     int i = 0;
@@ -404,6 +468,8 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return results;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public Selection isTrue() {
     Selection results = new BitmapBackedSelection();
     int i = 0;
@@ -416,6 +482,8 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return results;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public Selection isEqualTo(BooleanColumn other) {
     Selection results = new BitmapBackedSelection();
     int i = 0;
@@ -434,6 +502,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return data;
   }
 
+  /** Sets the value at i to b, and returns this column */
   public BooleanColumn set(int i, boolean b) {
     if (b) {
       data.set(i, BooleanColumnType.BYTE_TRUE);
@@ -443,21 +512,25 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** Sets the value at i to b, and returns this column */
   private BooleanColumn set(int i, byte b) {
     data.set(i, b);
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn set(int i, Boolean val) {
     return val == null ? setMissing(i) : set(i, val.booleanValue());
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn set(int row, String stringValue, AbstractColumnParser<?> parser) {
     return set(row, parser.parseByte(stringValue));
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn lead(int n) {
     BooleanColumn column = lag(-n);
@@ -465,11 +538,12 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn lag(int n) {
-    int srcPos = n >= 0 ? 0 : 0 - n;
+    int srcPos = n >= 0 ? 0 : -n;
     byte[] dest = new byte[size()];
-    int destPos = n <= 0 ? 0 : n;
+    int destPos = Math.max(n, 0);
     int length = n >= 0 ? size() - n : size() + n;
 
     for (int i = 0; i < size(); i++) {
@@ -495,10 +569,32 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /**
+   * Conditionally update this column, replacing current values with newValue for all rows where the
+   * current value matches the selection criteria.
+   *
+   * @param rowSelection the rows to be updated
+   * @param newValue a byte representation of boolean values. The only valid arguments are 0, 1, and
+   *     {@link BooleanColumnType:missingValueIndicator()}
+   */
+  public BooleanColumn set(Selection rowSelection, byte newValue) {
+    for (int row : rowSelection) {
+      set(row, newValue);
+    }
+    return this;
+  }
+
+  /**
+   * Returns the value at row as a double, with true values encoded as 1.0 and false values as 0.0
+   */
   public double getDouble(int row) {
     return getByte(row);
   }
 
+  /**
+   * Returns all the values in this column as an array of doubles, with true values encoded as 1.0
+   * and false values as 0.0
+   */
   public double[] asDoubleArray() {
     double[] doubles = new double[data.size()];
     for (int i = 0; i < size(); i++) {
@@ -507,14 +603,22 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return doubles;
   }
 
+  /** {@inheritDoc} */
   @Override
   public IntComparator rowComparator() {
     return comparator;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn append(Column<Boolean> column) {
-    checkArgument(column.type() == this.type());
+    checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     BooleanColumn col = (BooleanColumn) column;
     final int size = col.size();
     for (int i = 0; i < size; i++) {
@@ -523,22 +627,38 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Column<Boolean> append(Column<Boolean> column, int row) {
-    checkArgument(column.type() == this.type());
+    checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     BooleanColumn col = (BooleanColumn) column;
     append(col.getByte(row));
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Column<Boolean> set(int row, Column<Boolean> column, int sourceRow) {
-    checkArgument(column.type() == this.type());
+    checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     BooleanColumn col = (BooleanColumn) column;
     set(row, col.getByte(sourceRow));
     return this;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public Selection asSelection() {
     Selection selection = new BitmapBackedSelection();
     for (int i = 0; i < size(); i++) {
@@ -550,25 +670,30 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return selection;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isMissing() {
     return eval(BooleanColumnUtils.isMissing);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isNotMissing() {
     return eval(BooleanColumnUtils.isNotMissing);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Iterator<Boolean> iterator() {
     return new BooleanColumnIterator(this.byteIterator());
   }
 
+  /** Returns a ByteIterator for this column */
   public ByteIterator byteIterator() {
     return data.iterator();
   }
 
+  /** Returns the values in this column as a BooleanSet instance */
   public BooleanSet asSet() {
     BooleanSet set = new BooleanOpenHashSet(3);
     BooleanColumn unique = unique();
@@ -578,6 +703,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return set;
   }
 
+  /** Returns true if the column contains at least one value like {@code aBoolean} */
   public boolean contains(boolean aBoolean) {
     if (aBoolean) {
       return data().contains(BooleanColumnType.BYTE_TRUE);
@@ -585,11 +711,13 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return data().contains(BooleanColumnType.BYTE_FALSE);
   }
 
+  /** {@inheritDoc} */
   @Override
   public int byteSize() {
     return type().byteSize();
   }
 
+  /** {@inheritDoc} */
   @Override
   public byte[] asBytes(int row) {
     byte[] result = new byte[byteSize()];
@@ -597,11 +725,13 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return result;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn where(Selection selection) {
     return subset(selection.toArray());
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn removeMissing() {
     BooleanColumn noMissing = emptyCopy();
@@ -615,6 +745,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return noMissing;
   }
 
+  /** Returns a Selection of the elements that return true when the predicate is evaluated */
   public Selection eval(BytePredicate predicate) {
     Selection selection = new BitmapBackedSelection();
     for (int idx = 0; idx < data.size(); idx++) {
@@ -626,6 +757,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return selection;
   }
 
+  /** Returns a Selection of the elements that return true when the predicate is evaluated */
   public Selection eval(Predicate<Boolean> predicate) {
     Selection selection = new BitmapBackedSelection();
     for (int idx = 0; idx < data.size(); idx++) {
@@ -636,6 +768,10 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return selection;
   }
 
+  /**
+   * Returns a Selection of the elements that return true when the predicate is evaluated with the
+   * given Boolean argument
+   */
   public Selection eval(BiPredicate<Boolean, Boolean> predicate, Boolean valueToCompare) {
     Selection selection = new BitmapBackedSelection();
     for (int idx = 0; idx < data.size(); idx++) {
@@ -651,6 +787,10 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return data.iterator();
   }
 
+  /**
+   * Returns a DoubleColumn containing the elements in this column, with true as 1.0 and false as
+   * 0.0.
+   */
   public DoubleColumn asDoubleColumn() {
     DoubleColumn numberColumn = DoubleColumn.create(this.name(), size());
     ByteArrayList data = data();
@@ -660,6 +800,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return numberColumn;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int compare(Boolean o1, Boolean o2) {
     return Boolean.compare(o1, o2);
@@ -705,6 +846,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
 
   // fillWith methods
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn fillWith(BooleanIterator iterator) {
     for (int r = 0; r < size(); r++) {
@@ -716,6 +858,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn fillWith(BooleanIterable iterable) {
     BooleanIterator iterator = iterable.iterator();
@@ -731,6 +874,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public BooleanColumn fillWith(Supplier<Boolean> supplier) {
     for (int r = 0; r < size(); r++) {
@@ -743,6 +887,7 @@ public class BooleanColumn extends AbstractColumn<BooleanColumn, Boolean>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Boolean[] asObjectArray() {
     final Boolean[] output = new Boolean[data.size()];

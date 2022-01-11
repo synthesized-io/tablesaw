@@ -15,9 +15,12 @@
 package tech.tablesaw.api;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.Arrays;
 import org.junit.jupiter.api.Test;
+import tech.tablesaw.columns.numbers.FloatParser;
 import tech.tablesaw.selection.Selection;
 
 public class FloatColumnTest {
@@ -62,5 +65,26 @@ public class FloatColumnTest {
     Selection result = floatColumn.isNotIn(4, 40);
     assertEquals(5, result.size());
     assertTrue(floatColumn.where(result).contains(5f));
+  }
+
+  @Test
+  public void testCustomParser() {
+    // Just do enough to ensure the parser is wired up correctly
+    FloatParser customParser = new FloatParser(ColumnType.FLOAT);
+    customParser.setMissingValueStrings(Arrays.asList("not here"));
+    floatColumn.setParser(customParser);
+
+    floatColumn.appendCell("not here");
+    assertTrue(floatColumn.isMissing(floatColumn.size() - 1));
+    floatColumn.appendCell("5.0");
+    assertFalse(floatColumn.isMissing(floatColumn.size() - 1));
+  }
+
+  @Test
+  public void asSet() {
+    final float[] floatColumnValues = {4, 5, 9.3f, 5, 9.3f};
+    final FloatColumn floatColumn = FloatColumn.create("fc", floatColumnValues);
+    assertEquals(3, floatColumn.asSet().size());
+    assertTrue(floatColumn.asSet().contains(4f));
   }
 }

@@ -14,7 +14,10 @@
 
 package tech.tablesaw.api;
 
-import com.google.common.base.Preconditions;
+import static com.google.common.base.Preconditions.checkArgument;
+import static tech.tablesaw.api.ColumnType.STRING;
+import static tech.tablesaw.api.ColumnType.TEXT;
+
 import it.unimi.dsi.fastutil.ints.IntComparator;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -57,6 +60,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return StringColumnType.valueIsMissing(string);
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn appendMissing() {
     lookupTable.appendMissing();
@@ -94,48 +98,53 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
   }
 
   private StringColumn(String name, Collection<String> strings) {
-    super(StringColumnType.instance(), name);
+    super(StringColumnType.instance(), name, StringColumnType.DEFAULT_PARSER);
     for (String string : strings) {
       append(string);
     }
   }
 
   private StringColumn(String name, DictionaryMap map) {
-    super(StringColumnType.instance(), name);
+    super(StringColumnType.instance(), name, StringColumnType.DEFAULT_PARSER);
     lookupTable = map;
   }
 
   private StringColumn(String name) {
-    super(StringColumnType.instance(), name);
+    super(StringColumnType.instance(), name, StringColumnType.DEFAULT_PARSER);
   }
 
   private StringColumn(String name, String[] strings) {
-    super(StringColumnType.instance(), name);
+    super(StringColumnType.instance(), name, StringColumnType.DEFAULT_PARSER);
     for (String string : strings) {
       append(string);
     }
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isMissing(int rowNumber) {
     return lookupTable.isMissing(rowNumber);
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn emptyCopy() {
     return create(name());
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn emptyCopy(int rowSize) {
     return create(name(), rowSize);
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortAscending() {
     lookupTable.sortAscending();
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortDescending() {
     lookupTable.sortDescending();
@@ -158,6 +167,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
    * @return value as String
    * @throws IndexOutOfBoundsException if the given rowIndex is not in the column
    */
+  @Override
   public String get(int rowIndex) {
     return lookupTable.getValueForIndex(rowIndex);
   }
@@ -179,6 +189,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return strings;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Table summary() {
     Table summary = Table.create(this.name());
@@ -202,17 +213,19 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return summary;
   }
 
-  /** */
+  /** {@inheritDoc} */
   @Override
   public Table countByCategory() {
     return lookupTable.countByCategory(name());
   }
 
+  /** {@inheritDoc} */
   @Override
   public void clear() {
     lookupTable.clear();
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn lead(int n) {
     StringColumn column = lag(-n);
@@ -220,6 +233,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn lag(int n) {
 
@@ -234,11 +248,11 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
         if (i + n >= size()) {
           break;
         }
-        copy.appendCell(get(i));
+        copy.append(get(i));
       }
     } else {
       for (int i = -n; i < size(); i++) {
-        copy.appendCell(get(i));
+        copy.append(get(i));
       }
       for (int m = 0; m > n; m--) {
         copy.appendMissing();
@@ -263,6 +277,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn set(int rowIndex, String stringValue) {
     if (stringValue == null) {
@@ -282,6 +297,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int countUnique() {
     return lookupTable.countUnique();
@@ -298,6 +314,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return firstIndexOf(aString) >= 0;
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn setMissing(int i) {
     return set(i, StringColumnType.missingValueIndicator());
@@ -315,31 +332,37 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn appendCell(String object) {
-    return appendCell(object, StringColumnType.DEFAULT_PARSER);
+    return appendCell(object, parser());
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn appendCell(String object, AbstractColumnParser<?> parser) {
     return appendObj(parser.parse(object));
   }
 
+  /** {@inheritDoc} */
   @Override
   public IntComparator rowComparator() {
     return rowComparator;
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isEmpty() {
     return lookupTable.size() == 0;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isEqualTo(String string) {
     return lookupTable.isEqualTo(string);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isNotEqualTo(String string) {
     return lookupTable.isNotEqualTo(string);
@@ -372,10 +395,13 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return DoubleColumn.create(this.name(), asDoubleArray());
   }
 
+  /** {@inheritDoc} */
+  @Override
   public StringColumn where(Selection selection) {
     return subset(selection.toArray());
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn copy() {
     StringColumn newCol = create(name(), size());
@@ -387,13 +413,19 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return newCol;
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn append(Column<String> column) {
-    Preconditions.checkArgument(column.type() == this.type());
-    StringColumn source = (StringColumn) column;
-    final int size = source.size();
+    checkArgument(
+        column.type() == TEXT || column.type().equals(STRING),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
+    final int size = column.size();
     for (int i = 0; i < size; i++) {
-      append(source.getString(i));
+      append(column.getString(i));
     }
     return this;
   }
@@ -404,6 +436,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return lookupTable.countMissing();
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn removeMissing() {
     StringColumn noMissing = emptyCopy();
@@ -415,6 +448,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return noMissing;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Iterator<String> iterator() {
     return lookupTable.iterator();
@@ -441,6 +475,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
   }
 
   /** Added for naming consistency with all other columns */
+  @Override
   public StringColumn append(String value) {
     try {
       lookupTable.append(value);
@@ -456,6 +491,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn appendObj(Object obj) {
     if (obj == null) {
@@ -483,16 +519,19 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
         "Cannot append " + obj.getClass().getName() + " to StringColumn");
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isIn(String... strings) {
     return lookupTable.selectIsIn(strings);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isIn(Collection<String> strings) {
     return lookupTable.selectIsIn(strings);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isNotIn(String... strings) {
     Selection results = new BitmapBackedSelection();
@@ -501,6 +540,7 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return results;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isNotIn(Collection<String> strings) {
     Selection results = new BitmapBackedSelection();
@@ -517,11 +557,13 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     return lookupTable.countOccurrences(value);
   }
 
+  /** {@inheritDoc} */
   @Override
   public String[] asObjectArray() {
     return lookupTable.asObjectArray();
   }
 
+  /** {@inheritDoc} */
   @Override
   public StringColumn asStringColumn() {
     return copy();

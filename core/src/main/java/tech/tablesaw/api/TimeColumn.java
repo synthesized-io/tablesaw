@@ -29,10 +29,7 @@ import java.nio.ByteBuffer;
 import java.sql.Time;
 import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Iterator;
-import java.util.List;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -47,7 +44,7 @@ import tech.tablesaw.columns.times.TimeFilters;
 import tech.tablesaw.columns.times.TimeMapFunctions;
 import tech.tablesaw.selection.Selection;
 
-/** A column in a base table that contains float values */
+/** A column that contains int-encoded local time values */
 public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     implements CategoricalColumn<LocalTime>,
         TimeFilters,
@@ -56,7 +53,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
 
   private TimeColumnFormatter printFormatter = new TimeColumnFormatter();
 
-  private IntArrayList data;
+  protected IntArrayList data;
 
   private final IntComparator comparator =
       (r1, r2) -> {
@@ -66,12 +63,12 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
       };
 
   private TimeColumn(String name, IntArrayList times) {
-    super(TimeColumnType.instance(), name);
+    super(TimeColumnType.instance(), name, TimeColumnType.DEFAULT_PARSER);
     data = times;
   }
 
   private TimeColumn(String name) {
-    super(TimeColumnType.instance(), name);
+    super(TimeColumnType.instance(), name, TimeColumnType.DEFAULT_PARSER);
     data = new IntArrayList(DEFAULT_ARRAY_SIZE);
   }
 
@@ -85,6 +82,12 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
 
   public static TimeColumn create(String name) {
     return new TimeColumn(name);
+  }
+
+  public static TimeColumn create(String name, AbstractColumnParser<LocalTime> parser) {
+    TimeColumn column = new TimeColumn(name);
+    column.setParser(parser);
+    return column;
   }
 
   public static TimeColumn create(String name, Collection<LocalTime> data) {
@@ -117,12 +120,14 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn appendMissing() {
     appendInternal(TimeColumnType.missingValueIndicator());
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn subset(int[] rows) {
     final TimeColumn c = this.emptyCopy();
@@ -132,11 +137,12 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return c;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn lag(int n) {
-    int srcPos = n >= 0 ? 0 : 0 - n;
+    int srcPos = n >= 0 ? 0 : -n;
     int[] dest = new int[size()];
-    int destPos = n <= 0 ? 0 : n;
+    int destPos = Math.max(n, 0);
     int length = n >= 0 ? size() - n : size() + n;
 
     for (int i = 0; i < size(); i++) {
@@ -151,11 +157,14 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return copy;
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isMissing(int rowNumber) {
     return valueIsMissing(getIntInternal(rowNumber));
   }
 
+  /** {@inheritDoc} */
+  @Override
   public int size() {
     return data.size();
   }
@@ -165,6 +174,8 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public TimeColumn append(LocalTime time) {
     int value;
     if (time == null) {
@@ -176,6 +187,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn appendObj(Object obj) {
     if (obj == null) {
@@ -192,6 +204,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
         "Cannot append " + obj.getClass().getName() + " to TimeColumn");
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn removeMissing() {
     TimeColumn noMissing = emptyCopy();
@@ -205,11 +218,13 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return noMissing;
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getString(int row) {
     return printFormatter.format(getPackedTime(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getUnformattedString(int row) {
     return PackedLocalTime.toShortTimeString(getPackedTime(row));
@@ -226,6 +241,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     this.printFormatter = new TimeColumnFormatter(dateTimeFormatter);
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn emptyCopy() {
     TimeColumn empty = create(name());
@@ -233,6 +249,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return empty;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn emptyCopy(int rowSize) {
     TimeColumn column = TimeColumn.create(name(), rowSize);
@@ -240,6 +257,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn copy() {
     TimeColumn column = emptyCopy(size());
@@ -247,6 +265,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public void clear() {
     data.clear();
@@ -262,11 +281,13 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return times;
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortAscending() {
     data.sort(IntComparators.NATURAL_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortDescending() {
     data.sort(IntComparators.OPPOSITE_COMPARATOR);
@@ -280,7 +301,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     int max = getIntInternal(0);
 
     for (int aData : data) {
-      max = (max > aData) ? max : aData;
+      max = Math.max(max, aData);
     }
 
     if (max == TimeColumnType.missingValueIndicator()) {
@@ -289,6 +310,8 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return PackedLocalTime.asLocalTime(max);
   }
 
+  /** {@inheritDoc} */
+  @Override
   public LocalTime min() {
 
     if (isEmpty()) {
@@ -299,7 +322,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
 
     for (int aData : data) {
       if (aData != TimeColumnType.missingValueIndicator()) {
-        min = (min < aData) ? min : aData;
+        min = Math.min(min, aData);
       }
     }
     if (min == Integer.MAX_VALUE) {
@@ -308,6 +331,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return PackedLocalTime.asLocalTime(min);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Table summary() {
 
@@ -344,12 +368,14 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return count;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int countUnique() {
     IntOpenHashSet hashSet = new IntOpenHashSet(data);
     return hashSet.size();
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn unique() {
     IntSet ints = new IntOpenHashSet(data);
@@ -359,22 +385,26 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isEmpty() {
     return data.isEmpty();
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn appendCell(String object) {
-    appendInternal(PackedLocalTime.pack(TimeColumnType.DEFAULT_PARSER.parse(object)));
+    appendInternal(PackedLocalTime.pack(parser().parse(object)));
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn appendCell(String object, AbstractColumnParser<?> parser) {
     return appendObj(parser.parse(object));
   }
 
+  /** {@inheritDoc} */
   @Override
   public int getIntInternal(int index) {
     return data.getInt(index);
@@ -384,10 +414,13 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return getIntInternal(index);
   }
 
+  /** {@inheritDoc} */
+  @Override
   public LocalTime get(int index) {
     return PackedLocalTime.asLocalTime(getIntInternal(index));
   }
 
+  /** {@inheritDoc} */
   @Override
   public IntComparator rowComparator() {
     return comparator;
@@ -409,14 +442,22 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return DoubleColumn.create(name(), asDoubleArray());
   }
 
+  /** {@inheritDoc} */
   @Override
   public String toString() {
     return "LocalTime column: " + name();
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn append(Column<LocalTime> column) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     TimeColumn timeCol = (TimeColumn) column;
     final int size = timeCol.size();
     for (int i = 0; i < size; i++) {
@@ -425,15 +466,29 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn append(Column<LocalTime> column, int row) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     return appendInternal(((TimeColumn) column).getIntInternal(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn set(int row, Column<LocalTime> column, int sourceRow) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     return set(row, ((TimeColumn) column).getIntInternal(sourceRow));
   }
 
@@ -484,6 +539,8 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public TimeColumn set(int index, LocalTime value) {
     return value == null ? setMissing(index) : set(index, PackedLocalTime.pack(value));
   }
@@ -506,6 +563,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return data.iterator();
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean contains(LocalTime time) {
     int t = PackedLocalTime.pack(time);
@@ -513,21 +571,30 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
   }
 
   @Override
+  public Set<LocalTime> asSet() {
+    return new HashSet<>(unique().asList());
+  }
+
+  /** {@inheritDoc} */
+  @Override
   public TimeColumn setMissing(int i) {
     data.set(i, TimeColumnType.missingValueIndicator());
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isMissing() {
     return eval(isMissing);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isNotMissing() {
     return eval(isNotMissing);
   }
 
+  /** {@inheritDoc} */
   @Override
   public int byteSize() {
     return type().byteSize();
@@ -563,6 +630,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     };
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn where(Selection selection) {
     return subset(selection.toArray());
@@ -612,6 +680,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn fillWith(Iterable<LocalTime> iterable) {
     int[] r = new int[1];
@@ -631,6 +700,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public TimeColumn fillWith(Supplier<LocalTime> supplier) {
     int[] r = new int[1];
@@ -638,6 +708,7 @@ public class TimeColumn extends AbstractColumn<TimeColumn, LocalTime>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int compare(LocalTime o1, LocalTime o2) {
     return o1.compareTo(o2);

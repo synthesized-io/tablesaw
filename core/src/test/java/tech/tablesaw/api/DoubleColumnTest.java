@@ -14,12 +14,13 @@
 
 package tech.tablesaw.api;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import tech.tablesaw.columns.numbers.DoubleParser;
 
 public class DoubleColumnTest {
 
@@ -66,5 +67,27 @@ public class DoubleColumnTest {
     DoubleColumn uniq = DoubleColumn.create("test", 5, 4, 3, 2, 1, 5, 4, 3, 2, 1).unique();
     uniq.sortAscending();
     assertArrayEquals(new double[] {1.0, 2.0, 3.0, 4.0, 5.0}, uniq.asDoubleArray());
+  }
+
+  @Test
+  public void testCustomParser() {
+    // Just do enough to ensure the parser is wired up correctly
+    DoubleParser customParser = new DoubleParser(ColumnType.DOUBLE);
+    customParser.setMissingValueStrings(Arrays.asList("not here"));
+    DoubleColumn col = DoubleColumn.create("test", 3.0, 1.0, 2.0, 4.0);
+    col.setParser(customParser);
+
+    col.appendCell("not here");
+    assertTrue(col.isMissing(col.size() - 1));
+    col.appendCell("5.0");
+    assertFalse(col.isMissing(col.size() - 1));
+  }
+
+  @Test
+  public void asSet() {
+    final double[] values = {4, 5, 9.3, 5, 9.3};
+    final DoubleColumn c = DoubleColumn.create("fc", values);
+    assertEquals(3, c.asSet().size());
+    assertTrue(c.asSet().contains(4.0));
   }
 }

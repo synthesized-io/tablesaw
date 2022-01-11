@@ -11,7 +11,9 @@ import it.unimi.dsi.fastutil.shorts.ShortOpenHashSet;
 import it.unimi.dsi.fastutil.shorts.ShortSet;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.Set;
 import java.util.stream.Stream;
 import tech.tablesaw.columns.AbstractColumnParser;
 import tech.tablesaw.columns.Column;
@@ -21,13 +23,14 @@ import tech.tablesaw.columns.numbers.ShortColumnType;
 import tech.tablesaw.selection.BitmapBackedSelection;
 import tech.tablesaw.selection.Selection;
 
+/** A column that contains short values */
 public class ShortColumn extends NumberColumn<ShortColumn, Short>
     implements CategoricalColumn<Short> {
 
-  private final ShortArrayList data;
+  protected final ShortArrayList data;
 
   protected ShortColumn(final String name, ShortArrayList data) {
-    super(ShortColumnType.instance(), name);
+    super(ShortColumnType.instance(), name, ShortColumnType.DEFAULT_PARSER);
     setPrintFormatter(NumberColumnFormatter.ints());
     this.data = data;
   }
@@ -58,11 +61,13 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn createCol(final String name, final int initialSize) {
     return create(name, initialSize);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn createCol(final String name) {
     return create(name);
@@ -72,6 +77,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return ShortColumnType.valueIsMissing(value);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Short get(int index) {
     short result = getShort(index);
@@ -82,6 +88,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return data.getShort(index);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn subset(final int[] rows) {
     final ShortColumn c = this.emptyCopy();
@@ -109,16 +116,19 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return results;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int size() {
     return data.size();
   }
 
+  /** {@inheritDoc} */
   @Override
   public void clear() {
     data.clear();
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn unique() {
     final ShortSet values = new ShortOpenHashSet();
@@ -133,6 +143,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn top(int n) {
     final ShortArrayList top = new ShortArrayList();
@@ -144,6 +155,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return new ShortColumn(name() + "[Top " + n + "]", top);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn bottom(final int n) {
     final ShortArrayList bottom = new ShortArrayList();
@@ -155,11 +167,12 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return new ShortColumn(name() + "[Bottoms " + n + "]", bottom);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn lag(int n) {
-    final int srcPos = n >= 0 ? 0 : 0 - n;
+    final int srcPos = n >= 0 ? 0 : -n;
     final short[] dest = new short[size()];
-    final int destPos = n <= 0 ? 0 : n;
+    final int destPos = Math.max(n, 0);
     final int length = n >= 0 ? size() - n : size() + n;
 
     for (int i = 0; i < size(); i++) {
@@ -172,6 +185,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return new ShortColumn(name() + " lag(" + n + ")", new ShortArrayList(dest));
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn removeMissing() {
     ShortColumn result = copy();
@@ -191,6 +205,8 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return this;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public ShortColumn append(Short val) {
     if (val == null) {
       appendMissing();
@@ -200,26 +216,31 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn emptyCopy() {
-    return (ShortColumn) super.emptyCopy();
+    return super.emptyCopy();
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn emptyCopy(final int rowSize) {
-    return (ShortColumn) super.emptyCopy(rowSize);
+    return super.emptyCopy(rowSize);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn copy() {
     return new ShortColumn(name(), data.clone());
   }
 
+  /** {@inheritDoc} */
   @Override
   public Iterator<Short> iterator() {
     return data.iterator();
   }
 
+  /** {@inheritDoc} */
   @Override
   public Short[] asObjectArray() {
     final Short[] output = new Short[size()];
@@ -233,11 +254,17 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return output;
   }
 
+  public short[] asShortArray() {
+    return data.toShortArray();
+  }
+
+  /** {@inheritDoc} */
   @Override
   public int compare(Short o1, Short o2) {
     return Short.compare(o1, o2);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn set(int i, Short val) {
     return val == null ? setMissing(i) : set(i, (short) val);
@@ -248,14 +275,22 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Column<Short> set(int row, String stringValue, AbstractColumnParser<?> parser) {
     return set(row, parser.parseShort(stringValue));
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn append(final Column<Short> column) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     final ShortColumn numberColumn = (ShortColumn) column;
     final int size = numberColumn.size();
     for (int i = 0; i < size; i++) {
@@ -264,32 +299,46 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getString(final int row) {
     final short value = getShort(row);
-    if (ShortColumnType.valueIsMissing(value)) {
-      return "";
-    }
     return String.valueOf(getPrintFormatter().format(value));
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn append(Column<Short> column, int row) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     return append(((ShortColumn) column).getShort(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn set(int row, Column<Short> column, int sourceRow) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     return set(row, ((ShortColumn) column).getShort(sourceRow));
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn appendMissing() {
     return append(ShortColumnType.missingValueIndicator());
   }
 
+  /** {@inheritDoc} */
   @Override
   public byte[] asBytes(int rowNumber) {
     return ByteBuffer.allocate(ShortColumnType.instance().byteSize())
@@ -297,6 +346,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
         .array();
   }
 
+  /** {@inheritDoc} */
   @Override
   public int countUnique() {
     ShortSet uniqueElements = new ShortOpenHashSet();
@@ -330,6 +380,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return data.getShort(row);
   }
 
+  /** {@inheritDoc} */
   @Override
   public double getDouble(int row) {
     short value = data.getShort(row);
@@ -343,26 +394,31 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return ShortColumnType.valueIsMissing(value);
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isMissing(int rowNumber) {
     return isMissingValue(getShort(rowNumber));
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn setMissing(int i) {
     return set(i, ShortColumnType.missingValueIndicator());
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortAscending() {
     data.sort(ShortComparators.NATURAL_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortDescending() {
     data.sort(ShortComparators.OPPOSITE_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn appendObj(Object obj) {
     if (obj == null) {
@@ -374,16 +430,18 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     throw new IllegalArgumentException("Could not append " + obj.getClass());
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn appendCell(final String value) {
     try {
-      return append(ShortColumnType.DEFAULT_PARSER.parseShort(value));
+      return append(parser().parseShort(value));
     } catch (final NumberFormatException e) {
       throw new NumberFormatException(
           "Error adding value to column " + name() + ": " + e.getMessage());
     }
   }
 
+  /** {@inheritDoc} */
   @Override
   public ShortColumn appendCell(final String value, AbstractColumnParser<?> parser) {
     try {
@@ -394,6 +452,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     }
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getUnformattedString(final int row) {
     final int value = getInt(row);
@@ -480,6 +539,7 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
     return result;
   }
 
+  /** {@inheritDoc} */
   @Override
   public IntColumn asIntColumn() {
     IntColumn result = IntColumn.create(name());
@@ -491,5 +551,11 @@ public class ShortColumn extends NumberColumn<ShortColumn, Short>
       }
     }
     return result;
+  }
+
+  /** {@inheritDoc} */
+  @Override
+  public Set<Short> asSet() {
+    return new HashSet<>(unique().asList());
   }
 }

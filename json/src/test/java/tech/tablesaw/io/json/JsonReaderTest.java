@@ -14,8 +14,14 @@
 
 package tech.tablesaw.io.json;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static tech.tablesaw.api.ColumnType.DOUBLE;
+import static tech.tablesaw.api.ColumnType.INSTANT;
+import static tech.tablesaw.api.ColumnType.STRING;
 
+import com.google.common.collect.ImmutableMap;
+import java.io.IOException;
 import org.junit.jupiter.api.Test;
 import tech.tablesaw.api.ColumnType;
 import tech.tablesaw.api.IntColumn;
@@ -32,7 +38,7 @@ public class JsonReaderTest {
     assertEquals(3, table.rowCount());
     assertEquals("Date", table.column(0).name());
     assertEquals("Value", table.column(1).name());
-    assertEquals(ColumnType.LONG, table.columnTypes()[0]);
+    assertEquals(ColumnType.LONG, table.typeArray()[0]);
     assertEquals(1453438800000L, table.column("Date").get(0));
   }
 
@@ -43,7 +49,7 @@ public class JsonReaderTest {
     Table table = Table.read().string(json, "json");
     assertEquals(2, table.columnCount());
     assertEquals(3, table.rowCount());
-    assertEquals(ColumnType.LONG, table.columnTypes()[0]);
+    assertEquals(ColumnType.LONG, table.typeArray()[0]);
   }
 
   @Test
@@ -55,7 +61,7 @@ public class JsonReaderTest {
     assertEquals(3, table.rowCount());
     assertEquals("a", table.column(0).name());
     assertEquals("b.c", table.column(1).name());
-    assertEquals(ColumnType.LONG, table.columnTypes()[0]);
+    assertEquals(ColumnType.LONG, table.typeArray()[0]);
   }
 
   @Test
@@ -70,9 +76,38 @@ public class JsonReaderTest {
             IntColumn.create("C", new int[] {Integer.MIN_VALUE, 123}));
     Table actual = Table.read().string(json, "json");
 
-    assertEquals(ColumnType.INTEGER, actual.columnTypes()[0]);
+    assertEquals(ColumnType.INTEGER, actual.typeArray()[0]);
     assertEquals(expected.column("A").asList(), actual.column("A").asList());
     assertEquals(expected.column("B").asList(), actual.column("B").asList());
     assertEquals(expected.column("C").asList(), actual.column("C").asList());
+  }
+
+  @Test
+  public void testCustomizedColumnTypesMixedWithDetection() throws IOException {
+    String json =
+        "[[\"Date\",\"Value\"],[\"2007-12-03T10:15:30.00Z\",-2.1448117025014],[\"2020-12-03T10:15:30.00Z\",-2.9763153817574],[\"2021-12-03T10:15:30.00Z\",-2.9545283436391]]";
+
+    ColumnType[] columnTypes =
+        new JsonReader()
+            .read(
+                JsonReadOptions.builderFromString(json)
+                    .columnTypesPartial(ImmutableMap.of("Date", INSTANT))
+                    .build())
+            .typeArray();
+
+    assertArrayEquals(columnTypes, new ColumnType[] {INSTANT, DOUBLE});
+  }
+
+  @Test
+  public void testCustomizedColumnTypeAllCustomized() throws IOException {
+    String json =
+        "[[\"Date\",\"Value\"],[\"2007-12-03T10:15:30.00Z\",-2.1448117025014],[\"2020-12-03T10:15:30.00Z\",-2.9763153817574],[\"2021-12-03T10:15:30.00Z\",-2.9545283436391]]";
+
+    ColumnType[] columnTypes =
+        new JsonReader()
+            .read(JsonReadOptions.builderFromString(json).columnTypes(columnName -> STRING).build())
+            .typeArray();
+
+    assertArrayEquals(columnTypes, new ColumnType[] {STRING, STRING});
   }
 }

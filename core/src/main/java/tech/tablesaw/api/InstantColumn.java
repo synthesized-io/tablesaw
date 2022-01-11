@@ -54,14 +54,18 @@ import tech.tablesaw.columns.temporal.TemporalFillers;
 import tech.tablesaw.columns.temporal.TemporalFilters;
 import tech.tablesaw.selection.Selection;
 
-/** A column in a table that contains long-integer encoded (packed) local date-time values */
+/**
+ * A column that contains long-integer encoded (packed) instant values. An instant is a unique point
+ * of time on the timeline. The instants held by Instant column have millisecond precision, unlike
+ * instances of {@link java.time.Instant}, which have nanosecond precision
+ */
 public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     implements InstantMapFunctions,
         TemporalFillers<Instant, InstantColumn>,
         TemporalFilters<Instant>,
         CategoricalColumn<Instant> {
 
-  private LongArrayList data;
+  protected LongArrayList data;
 
   private final IntComparator comparator =
       (r1, r2) -> {
@@ -73,7 +77,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
   private InstantColumnFormatter printFormatter = new InstantColumnFormatter();
 
   private InstantColumn(String name, LongArrayList data) {
-    super(InstantColumnType.instance(), name);
+    super(InstantColumnType.instance(), name, InstantColumnType.DEFAULT_PARSER);
     this.data = data;
   }
 
@@ -125,11 +129,13 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return InstantColumnType.valueIsMissing(value);
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isMissing(int rowNumber) {
     return valueIsMissing(getLongInternal(rowNumber));
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn plus(long amountToAdd, ChronoUnit unit) {
     InstantColumn newColumn = emptyCopy();
@@ -147,6 +153,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return newColumn;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn subset(final int[] rows) {
     final InstantColumn c = this.emptyCopy();
@@ -156,6 +163,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return c;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn removeMissing() {
     InstantColumn noMissing = emptyCopy();
@@ -169,31 +177,40 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return noMissing;
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean contains(Instant dateTime) {
     long dt = PackedInstant.pack(dateTime);
     return data.contains(dt);
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn setMissing(int i) {
     return set(i, InstantColumnType.missingValueIndicator());
   }
 
+  /** {@inheritDoc} */
+  @Override
   public InstantColumn where(Selection selection) {
     return subset(selection.toArray());
   }
 
+  /**
+   * Sets the print formatter to the argument. The print formatter is used in pretty-printing and
+   * optionally for writing to text files like CSVs
+   */
   public void setPrintFormatter(InstantColumnFormatter formatter) {
     Preconditions.checkNotNull(formatter);
     this.printFormatter = formatter;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn lag(int n) {
-    int srcPos = n >= 0 ? 0 : 0 - n;
+    int srcPos = n >= 0 ? 0 : -n;
     long[] dest = new long[size()];
-    int destPos = n <= 0 ? 0 : n;
+    int destPos = Math.max(n, 0);
     int length = n >= 0 ? size() - n : size() + n;
 
     for (int i = 0; i < size(); i++) {
@@ -208,16 +225,20 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return copy;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn appendCell(String stringValue) {
-    return appendInternal(PackedInstant.pack(InstantColumnType.DEFAULT_PARSER.parse(stringValue)));
+    return appendInternal(PackedInstant.pack(parser().parse(stringValue)));
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn appendCell(String stringValue, AbstractColumnParser<?> parser) {
     return appendObj(parser.parse(stringValue));
   }
 
+  /** {@inheritDoc} */
+  @Override
   public InstantColumn append(Instant dateTime) {
     if (dateTime != null) {
       final long dt = PackedInstant.pack(dateTime);
@@ -228,6 +249,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn appendObj(Object obj) {
     if (obj == null) {
@@ -257,25 +279,32 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
         "Cannot append " + obj.getClass().getName() + " to DateTimeColumn");
   }
 
+  /** {@inheritDoc} */
+  @Override
   public int size() {
     return data.size();
   }
 
+  /** {@inheritDoc} */
+  @Override
   public InstantColumn appendInternal(long dateTime) {
     data.add(dateTime);
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getString(int row) {
     return printFormatter.format(getPackedDateTime(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public String getUnformattedString(int row) {
     return PackedInstant.toString(getPackedDateTime(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn emptyCopy() {
     InstantColumn empty = create(name());
@@ -283,6 +312,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return empty;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn emptyCopy(int rowSize) {
     InstantColumn column = create(name(), rowSize);
@@ -290,6 +320,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn copy() {
     InstantColumn column = emptyCopy(data.size());
@@ -297,21 +328,25 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public void clear() {
     data.clear();
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortAscending() {
     data.sort(LongComparators.NATURAL_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public void sortDescending() {
     data.sort(LongComparators.OPPOSITE_COMPARATOR);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Table summary() {
     Table table = Table.create("Column: " + name());
@@ -335,6 +370,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return table;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int countUnique() {
     LongSet ints = new LongOpenHashSet(data.size());
@@ -344,6 +380,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return ints.size();
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn unique() {
     LongSet ints = new LongOpenHashSet(data.size());
@@ -356,23 +393,30 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return column;
   }
 
+  /** {@inheritDoc} */
   @Override
   public boolean isEmpty() {
     return data.isEmpty();
   }
 
+  /** {@inheritDoc} */
+  @Override
   public long getLongInternal(int index) {
     return data.getLong(index);
   }
 
+  // TODO: Name?
   protected long getPackedDateTime(int index) {
     return getLongInternal(index);
   }
 
+  /** {@inheritDoc} */
+  @Override
   public Instant get(int index) {
     return PackedInstant.asInstant(getPackedDateTime(index));
   }
 
+  /** {@inheritDoc} */
   @Override
   public IntComparator rowComparator() {
     return comparator;
@@ -463,10 +507,18 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return output;
   }
 
+  /**
+   * Returns a DateTimeColumn where each element is a representation of the associated Instant
+   * translated using UTC as the timezone
+   */
   public DateTimeColumn asLocalDateTimeColumn() {
     return asLocalDateTimeColumn(ZoneOffset.UTC);
   }
 
+  /**
+   * Returns a DateTimeColumn where each element is a representation of the associated Instant
+   * translated using the argument as the timezone
+   */
   public DateTimeColumn asLocalDateTimeColumn(ZoneId zone) {
     LocalDateTime[] output = new LocalDateTime[data.size()];
     for (int i = 0; i < data.size(); i++) {
@@ -480,9 +532,16 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return DateTimeColumn.create(name(), output);
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn append(Column<Instant> column) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     InstantColumn dateTimeColumn = (InstantColumn) column;
     final int size = dateTimeColumn.size();
     for (int i = 0; i < size; i++) {
@@ -491,18 +550,33 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn append(Column<Instant> column, int row) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     return appendInternal(((InstantColumn) column).getLongInternal(row));
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn set(int row, Column<Instant> column, int sourceRow) {
-    Preconditions.checkArgument(column.type() == this.type());
+    Preconditions.checkArgument(
+        column.type() == this.type(),
+        "Column '%s' has type %s, but column '%s' has type %s.",
+        name(),
+        type(),
+        column.name(),
+        column.type());
     return set(row, ((InstantColumn) column).getLongInternal(sourceRow));
   }
 
+  /** {@inheritDoc} */
   public Instant max() {
     if (isEmpty()) {
       return null;
@@ -521,12 +595,14 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return PackedInstant.asInstant(max);
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn appendMissing() {
     appendInternal(InstantColumnType.missingValueIndicator());
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Instant min() {
     if (isEmpty()) {
@@ -551,6 +627,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn set(int index, Instant value) {
     return value == null ? setMissing(index) : set(index, PackedInstant.pack(value));
@@ -590,10 +667,13 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return bottom;
   }
 
+  /** Returns an iterator over the long representations of the instants in this column */
   public LongIterator longIterator() {
     return data.iterator();
   }
 
+  /** {@inheritDoc} */
+  @Override
   public Set<Instant> asSet() {
     Set<Instant> times = new HashSet<>();
     InstantColumn unique = unique();
@@ -603,6 +683,8 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return times;
   }
 
+  /** {@inheritDoc} */
+  @Override
   public int byteSize() {
     return type().byteSize();
   }
@@ -667,6 +749,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn fillWith(Iterator<Instant> iterator) {
     int[] r = new int[1];
@@ -689,6 +772,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn fillWith(Iterable<Instant> iterable) {
     int[] r = new int[1];
@@ -708,6 +792,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public InstantColumn fillWith(Supplier<Instant> supplier) {
     int[] r = new int[1];
@@ -715,6 +800,7 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return this;
   }
 
+  /** {@inheritDoc} */
   @Override
   public Instant[] asObjectArray() {
     final Instant[] output = new Instant[data.size()];
@@ -724,16 +810,19 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     return output;
   }
 
+  /** {@inheritDoc} */
   @Override
   public int compare(Instant o1, Instant o2) {
     return o1.compareTo(o2);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isMissing() {
     return eval(isMissing);
   }
 
+  /** {@inheritDoc} */
   @Override
   public Selection isNotMissing() {
     return eval(isNotMissing);

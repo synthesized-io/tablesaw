@@ -3,7 +3,6 @@ package tech.tablesaw.io.fixed;
 import com.univocity.parsers.fixed.FieldAlignment;
 import com.univocity.parsers.fixed.FixedWidthFields;
 import java.io.File;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
 import tech.tablesaw.io.Destination;
@@ -142,15 +141,19 @@ public class FixedWidthWriteOptions extends WriteOptions {
     return normalizedNewline;
   }
 
-  public static Builder builder(Destination destination) throws IOException {
+  public boolean autoClose() {
+    return autoClose;
+  }
+
+  public static Builder builder(Destination destination) {
     return new Builder(destination);
   }
 
-  public static Builder builder(File file) throws IOException {
+  public static Builder builder(File file) {
     return new Builder(file);
   }
 
-  public static Builder builder(String fileName) throws IOException {
+  public static Builder builder(String fileName) {
     return builder(new File(fileName));
   }
 
@@ -186,11 +189,11 @@ public class FixedWidthWriteOptions extends WriteOptions {
     private char lookupWildcard = '?';
     private char normalizedNewline = '\n';
 
-    protected Builder(Destination destination) throws IOException {
+    protected Builder(Destination destination) {
       super(destination);
     }
 
-    protected Builder(File file) throws IOException {
+    protected Builder(File file) {
       super(file);
     }
 
@@ -217,7 +220,7 @@ public class FixedWidthWriteOptions extends WriteOptions {
       return this;
     }
 
-    public FixedWidthWriteOptions.Builder header(FixedWidthFields columnSpecs) {
+    public FixedWidthWriteOptions.Builder columnSpecs(FixedWidthFields columnSpecs) {
       this.columnSpecs = columnSpecs;
       return this;
     }

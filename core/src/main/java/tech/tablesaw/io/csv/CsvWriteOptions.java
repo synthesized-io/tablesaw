@@ -1,7 +1,6 @@
 package tech.tablesaw.io.csv;
 
 import java.io.File;
-import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
 import java.nio.file.Paths;
@@ -16,6 +15,7 @@ public class CsvWriteOptions extends WriteOptions {
   private final boolean header;
   private final boolean ignoreLeadingWhitespaces;
   private final boolean ignoreTrailingWhitespaces;
+  private final boolean usePrintFormatter;
   private final Character separator;
   private final Character quoteChar;
   private final Character escapeChar;
@@ -38,6 +38,7 @@ public class CsvWriteOptions extends WriteOptions {
     this.dateFormatter = builder.dateFormatter;
     this.dateTimeFormatter = builder.dateTimeFormatter;
     this.columnNameMap = builder.columnNameMap;
+    this.usePrintFormatter = builder.usePrintFormatters;
   }
 
   public boolean header() {
@@ -64,6 +65,10 @@ public class CsvWriteOptions extends WriteOptions {
     return quoteAllFields;
   }
 
+  public boolean usePrintFormatters() {
+    return usePrintFormatter;
+  }
+
   public Map<String, String> columnNameMap() {
     return columnNameMap;
   }
@@ -84,6 +89,10 @@ public class CsvWriteOptions extends WriteOptions {
     return dateFormatter;
   }
 
+  public boolean autoClose() {
+    return autoClose;
+  }
+
   public static Builder builder(Destination dest) {
     return new Builder(dest);
   }
@@ -96,11 +105,11 @@ public class CsvWriteOptions extends WriteOptions {
     return new Builder(dest);
   }
 
-  public static Builder builder(File dest) throws IOException {
+  public static Builder builder(File dest) {
     return new Builder(dest);
   }
 
-  public static Builder builder(String fileName) throws IOException {
+  public static Builder builder(String fileName) {
     return builder(new File(fileName));
   }
 
@@ -110,6 +119,7 @@ public class CsvWriteOptions extends WriteOptions {
     private boolean ignoreLeadingWhitespaces = true;
     private boolean ignoreTrailingWhitespaces = true;
     private boolean quoteAllFields = false;
+    private boolean usePrintFormatters = false;
     private Character separator;
     private String lineEnd = System.lineSeparator();
     private Character escapeChar;
@@ -118,7 +128,7 @@ public class CsvWriteOptions extends WriteOptions {
     private DateTimeFormatter dateFormatter;
     private Map<String, String> columnNameMap = new HashMap<>();
 
-    protected Builder(String fileName) throws IOException {
+    protected Builder(String fileName) {
       super(Paths.get(fileName).toFile());
     }
 
@@ -126,7 +136,7 @@ public class CsvWriteOptions extends WriteOptions {
       super(dest);
     }
 
-    protected Builder(File file) throws IOException {
+    protected Builder(File file) {
       super(file);
     }
 
@@ -159,13 +169,34 @@ public class CsvWriteOptions extends WriteOptions {
       return this;
     }
 
+    /**
+     * Writes date column output using the given DateFormatter
+     *
+     * @deprecated
+     */
+    @Deprecated
     public CsvWriteOptions.Builder dateFormatter(DateTimeFormatter dateFormatter) {
       this.dateFormatter = dateFormatter;
       return this;
     }
 
+    /**
+     * Writes DateTime column output using the given DateFormatter
+     *
+     * @deprecated
+     */
+    @Deprecated
     public CsvWriteOptions.Builder dateTimeFormatter(DateTimeFormatter dateTimeFormatter) {
       this.dateTimeFormatter = dateTimeFormatter;
+      return this;
+    }
+
+    /**
+     * Sets the usePrintFormatters option @link{tech.tablesaw.columns.ColumnFormatter} When true,
+     * printFormatters will be used in writing the output text for any column that has one.
+     */
+    public CsvWriteOptions.Builder usePrintFormatters(boolean useFormatter) {
+      this.usePrintFormatters = useFormatter;
       return this;
     }
 

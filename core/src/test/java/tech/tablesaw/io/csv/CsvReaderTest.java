@@ -20,8 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static tech.tablesaw.api.ColumnType.*;
 
+import com.google.common.collect.ImmutableMap;
 import com.univocity.parsers.common.TextParsingException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -40,16 +42,20 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeSet;
 import org.junit.jupiter.api.Test;
 import tech.tablesaw.api.ColumnType;
 import tech.tablesaw.api.DateColumn;
 import tech.tablesaw.api.DateTimeColumn;
+import tech.tablesaw.api.DoubleColumn;
 import tech.tablesaw.api.LongColumn;
 import tech.tablesaw.api.ShortColumn;
 import tech.tablesaw.api.StringColumn;
 import tech.tablesaw.api.Table;
+import tech.tablesaw.columns.numbers.DoubleColumnType;
+import tech.tablesaw.columns.numbers.NumberColumnFormatter;
 import tech.tablesaw.io.AddCellToColumnException;
 
 /** Tests for CSV Reading */
@@ -474,14 +480,10 @@ public class CsvReaderTest {
   }
 
   @Test
-  public void testWithMissingValue() throws IOException {
+  void testWithMissingValue() throws IOException {
 
     CsvReadOptions options =
-        CsvReadOptions.builder("../data/missing_values.csv")
-            .dateFormat(DateTimeFormatter.ofPattern("yyyy.MM.dd"))
-            .header(true)
-            .missingValueIndicator("-")
-            .build();
+        CsvReadOptions.builder("../data/missing_values.csv").missingValueIndicator("-").build();
 
     Table t = Table.read().csv(options);
     assertEquals(1, t.stringColumn(0).countMissing());
@@ -489,17 +491,36 @@ public class CsvReaderTest {
     assertEquals(1, t.numberColumn(2).countMissing());
   }
 
-  /** Tests the auto-detection of missing values, using multiple missing value indicators */
+  /**
+   * Tests using multiple, non-standard missing value indicators, some columns also contains NA or
+   * N/A, which are treated as regular string values rather than missing values. This has the
+   * side-effect of treating those otherwise numeric columns as StringColumns
+   */
   @Test
-  public void testWithMissingValue2() throws IOException {
+  void testWithMissingValues() throws IOException {
 
+    Reader reader =
+        new StringReader(
+            "Products,Sales,Market_Share\n"
+                + "a,?,-\n"
+                + "b,12200,NA\n"
+                + "c,60000,33\n"
+                + "d,N/A,10\n"
+                + ",32000,42");
     CsvReadOptions options =
-        CsvReadOptions.builder("../data/missing_values2.csv")
-            .dateFormat(DateTimeFormatter.ofPattern("yyyy.MM.dd"))
-            .header(true)
-            .build();
+        CsvReadOptions.builder(reader).sample(false).missingValueIndicator("-", "?", "").build();
 
     Table t = Table.read().csv(options);
+    assertEquals(1, t.stringColumn(0).countMissing());
+    assertEquals(1, t.stringColumn(1).countMissing());
+    assertEquals(1, t.stringColumn(2).countMissing());
+  }
+
+  /** Tests the auto-detection of missing values, using multiple missing value indicators */
+  @Test
+  void testWithMissingValue2() throws IOException {
+
+    Table t = Table.read().csv("../data/missing_values2.csv");
     assertEquals(1, t.stringColumn(0).countMissing());
     assertEquals(1, t.numberColumn(1).countMissing());
     assertEquals(1, t.numberColumn(2).countMissing());
@@ -615,7 +636,7 @@ public class CsvReaderTest {
   }
 
   @Test
-  public void testLoadFromUrlWithColumnTypes() throws IOException {
+  public void testLoadFromUrlWithtypeArray() throws IOException {
     ColumnType[] types = {LOCAL_DATE, DOUBLE, STRING};
     Table table;
     try (InputStream input = new File("../data/bush.csv").toURI().toURL().openStream()) {
@@ -732,15 +753,16 @@ public class CsvReaderTest {
   @Test
   public void testEmptyFileHeaderEnabled() throws IOException {
     Table table1 = Table.read().csv(CsvReadOptions.builder("../data/empty_file.csv").header(false));
-    assertEquals("0 rows X 0 cols", table1.shape());
+    assertEquals("empty_file.csv: 0 rows X 0 cols", table1.shape());
   }
 
   @Test
   public void testEmptyFileHeaderDisabled() throws IOException {
     Table table1 = Table.read().csv(CsvReadOptions.builder("../data/empty_file.csv").header(false));
-    assertEquals("0 rows X 0 cols", table1.shape());
+    assertEquals("empty_file.csv: 0 rows X 0 cols", table1.shape());
   }
 
+  @Test
   public void testReadMaxColumnsExceeded() {
     assertThrows(
         TextParsingException.class,
@@ -757,7 +779,7 @@ public class CsvReaderTest {
                 CsvReadOptions.builder("../data/10001_columns.csv")
                     .maxNumberOfColumns(10001)
                     .header(false));
-    assertEquals("1 rows X 10001 cols", table1.shape());
+    assertEquals("10001_columns.csv: 1 rows X 10001 cols", table1.shape());
   }
 
   @Test
@@ -769,7 +791,7 @@ public class CsvReaderTest {
                     .maxNumberOfColumns(3)
                     .commentPrefix('#')
                     .header(true));
-    assertEquals("3 rows X 3 cols", table1.shape());
+    assertEquals("with_comments.csv: 3 rows X 3 cols", table1.shape());
   }
 
   @Test
@@ -825,5 +847,155 @@ public class CsvReaderTest {
     // test CSV reads quote back again
     Table out = Table.read().csv(new StringReader(string));
     assertEquals(table.get(0, 0), out.get(0, 0));
+  }
+
+  @Test
+  public void testReadCsvWithPercentage1() throws IOException {
+    Table table = Table.read().csv(CsvReadOptions.builder("../data/currency_percent.csv"));
+    assertEquals(DoubleColumnType.instance(), table.typeArray()[1]);
+    assertEquals(DoubleColumnType.instance(), table.typeArray()[2]);
+  }
+
+  @Test
+  public void testReadCsvWithPercentage2() throws IOException {
+    Table table = Table.read().csv(CsvReadOptions.builder("../data/currency_percent.csv"));
+    DoubleColumn column = (DoubleColumn) table.column(1);
+    assertEquals("0.0132", column.getString(0));
+    assertEquals("0.32768", column.getString(1));
+    assertEquals("1", column.getString(2));
+    column.setPrintFormatter(NumberColumnFormatter.percent(2));
+    assertEquals("1.32%", column.getString(0));
+    assertEquals("32.77%", column.getString(1));
+    assertEquals("100.00%", column.getString(2));
+  }
+
+  @Test
+  public void testSkipRowsWithInvalidColumnCount() throws IOException {
+    Table table =
+        Table.read()
+            .csv(
+                CsvReadOptions.builder("../data/short_row.csv")
+                    .skipRowsWithInvalidColumnCount(true)
+                    .build());
+    assertEquals(2, table.rowCount());
+  }
+
+  @Test
+  public void skipRowsWithInvalidColumnCountWithoutHeader() throws IOException {
+    assertThrows(
+        AddCellToColumnException.class,
+        () -> {
+          Table.read()
+              .csv(
+                  CsvReadOptions.builder("../data/short_row.csv")
+                      .header(false)
+                      .skipRowsWithInvalidColumnCount(true)
+                      .build());
+        });
+  }
+
+  @Test
+  public void testCustomizedColumnTypesMixedWithDetection() throws IOException {
+    Reader reader = new FileReader("../data/bus_stop_test.csv");
+    CsvReadOptions options =
+        CsvReadOptions.builder(reader)
+            .header(true)
+            .separator(',')
+            .locale(Locale.getDefault())
+            .minimizeColumnSizes()
+            .columnTypesPartial(
+                columnName ->
+                    Optional.ofNullable(
+                        ImmutableMap.of("stop_id", STRING, "stop_name", STRING, "stop_lon", DOUBLE)
+                            .get(columnName)))
+            .build();
+
+    ColumnType[] columnTypes = new CsvReader().read(options).typeArray();
+
+    ColumnType[] expectedTypes = Arrays.copyOf(bus_types, bus_types.length);
+    expectedTypes[0] = STRING; // stop_id
+    expectedTypes[1] = STRING; // stop_name
+    expectedTypes[4] = DOUBLE; // stop_lon
+    assertArrayEquals(expectedTypes, columnTypes);
+  }
+
+  @Test
+  public void testCustomizedColumnTypeAllCustomized() throws IOException {
+    Reader reader = new FileReader("../data/bus_stop_test.csv");
+    CsvReadOptions options =
+        CsvReadOptions.builder(reader)
+            .header(true)
+            .separator(',')
+            .locale(Locale.getDefault())
+            .minimizeColumnSizes()
+            .columnTypes(columnName -> STRING)
+            .build();
+
+    ColumnType[] columnTypes = new CsvReader().read(options).typeArray();
+
+    assertTrue(Arrays.stream(columnTypes).allMatch(columnType -> columnType.equals(STRING)));
+  }
+
+  @Test
+  public void testColumnsArePreservedWithNoDataIfCustomizedTypesAreProvided() throws IOException {
+    Reader reader = new FileReader("../data/bus_stop_test_no_data.csv");
+    CsvReadOptions options =
+        CsvReadOptions.builder(reader)
+            .header(true)
+            .separator(',')
+            .locale(Locale.getDefault())
+            .minimizeColumnSizes()
+            .columnTypesPartial(
+                ImmutableMap.of(
+                    "stop_id",
+                    SHORT,
+                    "stop_name",
+                    STRING,
+                    "stop_desc",
+                    STRING,
+                    "stop_lat",
+                    FLOAT,
+                    "stop_lon",
+                    FLOAT))
+            .build();
+
+    ColumnType[] columnTypes = new CsvReader().read(options).typeArray();
+
+    assertArrayEquals(bus_types, columnTypes);
+  }
+
+  @Test
+  public void testColumnsArePreservedWithNoDataIfCustomizedTypesAreProvided2() throws IOException {
+    Reader reader = new FileReader("../data/bus_stop_test_no_data.csv");
+    CsvReadOptions options =
+        CsvReadOptions.builder(reader)
+            .header(true)
+            .separator(',')
+            .locale(Locale.getDefault())
+            .minimizeColumnSizes()
+            .columnTypes(new ColumnType[] {SHORT, STRING, STRING, FLOAT, FLOAT})
+            .build();
+
+    ColumnType[] columnTypes = new CsvReader().read(options).typeArray();
+
+    assertArrayEquals(bus_types, columnTypes);
+  }
+
+  @Test
+  public void testColumnsArePreservedWithNoDataIfCustomizedTypesAreProvidedPartially()
+      throws IOException {
+    Reader reader = new FileReader("../data/bus_stop_test_no_data.csv");
+    CsvReadOptions options =
+        CsvReadOptions.builder(reader)
+            .header(true)
+            .separator(',')
+            .locale(Locale.getDefault())
+            .minimizeColumnSizes()
+            .columnTypesPartial(ImmutableMap.of("stop_id", SHORT, "stop_name", STRING))
+            .build();
+
+    ColumnType[] columnTypes = new CsvReader().read(options).typeArray();
+
+    assertArrayEquals(new ColumnType[] {SHORT, STRING}, columnTypes);
   }
 }

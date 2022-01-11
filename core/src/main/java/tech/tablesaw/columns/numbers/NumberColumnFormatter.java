@@ -4,11 +4,13 @@ import java.text.DecimalFormat;
 import java.text.DecimalFormatSymbols;
 import java.text.NumberFormat;
 import java.util.Locale;
+import tech.tablesaw.api.ColumnType;
+import tech.tablesaw.columns.ColumnFormatter;
 
-public class NumberColumnFormatter {
+public class NumberColumnFormatter extends ColumnFormatter {
 
   private final NumberFormat format;
-  private String missingString = "";
+  private ColumnType columnType;
 
   public static NumberColumnFormatter percent(int fractionalDigits) {
     NumberFormat format = NumberFormat.getPercentInstance();
@@ -63,26 +65,66 @@ public class NumberColumnFormatter {
   }
 
   public NumberColumnFormatter() {
+    super("");
     this.format = null;
   }
 
   public NumberColumnFormatter(NumberFormat format) {
+    super("");
     this.format = format;
   }
 
   public NumberColumnFormatter(NumberFormat format, String missingString) {
+    super(missingString);
     this.format = format;
-    this.missingString = missingString;
   }
 
   public NumberColumnFormatter(String missingString) {
+    super(missingString);
     this.format = null;
-    this.missingString = missingString;
+  }
+
+  public void setColumnType(ColumnType columnType) {
+    this.columnType = columnType;
+  }
+
+  public NumberFormat getFormat() {
+    return format;
   }
 
   public String format(long value) {
     if (isMissingValue(value)) {
-      return missingString;
+      return getMissingString();
+    }
+    if (format == null) {
+      return String.valueOf(value);
+    }
+    return format.format(value);
+  }
+
+  public String format(int value) {
+    if (isMissingValue(value)) {
+      return getMissingString();
+    }
+    if (format == null) {
+      return String.valueOf(value);
+    }
+    return format.format(value);
+  }
+
+  public String format(short value) {
+    if (isMissingValue(value)) {
+      return getMissingString();
+    }
+    if (format == null) {
+      return String.valueOf(value);
+    }
+    return format.format(value);
+  }
+
+  public String format(float value) {
+    if (isMissingValue(value)) {
+      return getMissingString();
     }
     if (format == null) {
       return String.valueOf(value);
@@ -92,7 +134,7 @@ public class NumberColumnFormatter {
 
   public String format(double value) {
     if (isMissingValue(value)) {
-      return missingString;
+      return getMissingString();
     }
     if (format == null) {
       return String.valueOf(value);
@@ -106,12 +148,51 @@ public class NumberColumnFormatter {
         + "format="
         + format
         + ", missingString='"
-        + missingString
+        + getMissingString()
         + '\''
         + '}';
   }
 
   private boolean isMissingValue(double value) {
-    return value != value;
+    if (columnType.equals(ColumnType.DOUBLE)) {
+      return DoubleColumnType.valueIsMissing(value);
+    } else {
+      throw new RuntimeException("Unhandled column type in NumberColumnFormatter: " + columnType);
+    }
+  }
+
+  private boolean isMissingValue(float value) {
+    if (columnType.equals(ColumnType.FLOAT)) {
+      return FloatColumnType.valueIsMissing(value);
+    } else {
+      throw new RuntimeException("Unhandled column type in NumberColumnFormatter: " + columnType);
+    }
+  }
+
+  private boolean isMissingValue(int value) {
+    if (columnType.equals(ColumnType.INTEGER)) {
+      return IntColumnType.valueIsMissing(value);
+    }
+    if (columnType.equals(ColumnType.SHORT)) {
+      return ShortColumnType.valueIsMissing(value);
+    } else {
+      throw new RuntimeException("Unhandled column type in NumberColumnFormatter: " + columnType);
+    }
+  }
+
+  private boolean isMissingValue(short value) {
+    if (columnType.equals(ColumnType.SHORT)) {
+      return ShortColumnType.valueIsMissing(value);
+    } else {
+      throw new RuntimeException("Unhandled column type in NumberColumnFormatter: " + columnType);
+    }
+  }
+
+  private boolean isMissingValue(long value) {
+    if (columnType.equals(ColumnType.LONG)) {
+      return LongColumnType.valueIsMissing(value);
+    } else {
+      throw new RuntimeException("Unhandled column type in NumberColumnFormatter: " + columnType);
+    }
   }
 }

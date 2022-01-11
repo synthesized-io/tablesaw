@@ -15,31 +15,27 @@
 package tech.tablesaw.api;
 
 import static java.util.stream.Collectors.toList;
+import static tech.tablesaw.aggregate.AggregateFunctions.count;
 import static tech.tablesaw.aggregate.AggregateFunctions.countMissing;
 import static tech.tablesaw.api.QuerySupport.not;
 import static tech.tablesaw.selection.Selection.selectNRowsAtRandom;
 
-import com.google.common.annotations.Beta;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.Streams;
 import com.google.common.primitives.Ints;
 import io.github.classgraph.ClassGraph;
 import io.github.classgraph.ScanResult;
+import it.unimi.dsi.fastutil.ints.IntArrayList;
 import it.unimi.dsi.fastutil.ints.IntArrays;
 import it.unimi.dsi.fastutil.ints.IntComparator;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.Comparator;
-import java.util.Iterator;
-import java.util.List;
-import java.util.NoSuchElementException;
+import java.util.*;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import java.util.function.Predicate;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import org.roaringbitmap.RoaringBitmap;
 import tech.tablesaw.aggregate.AggregateFunction;
 import tech.tablesaw.aggregate.CrossTab;
 import tech.tablesaw.aggregate.PivotTable;
@@ -118,6 +114,7 @@ public class Table extends Relation implements Iterable<Row> {
     }
   }
 
+  /** TODO: Add documentation */
   private static void autoRegisterReadersAndWriters() {
     try (ScanResult scanResult =
         new ClassGraph().enableAllInfo().whitelistPackages("tech.tablesaw.io").scan()) {
@@ -226,15 +223,23 @@ public class Table extends Relation implements Iterable<Row> {
     return key;
   }
 
+  /** Returns an object that an be used to read data from a file into a new Table */
   public static DataFrameReader read() {
     return new DataFrameReader(defaultReaderRegistry);
   }
 
+  /**
+   * Returns an object that an be used to write data from a Table into a file. If the file exists,
+   * it is over-written
+   */
   public DataFrameWriter write() {
     return new DataFrameWriter(defaultWriterRegistry, this);
   }
 
-  /** Adds the given column to this table */
+  /**
+   * Adds the given column to this table. Column must either be empty or have size() == the
+   * rowCount() of the table they're being added to. Column names in the table must remain unique.
+   */
   @Override
   public Table addColumns(final Column<?>... cols) {
     for (final Column<?> c : cols) {
@@ -255,7 +260,9 @@ public class Table extends Relation implements Iterable<Row> {
 
   /**
    * Throws an IllegalArgumentException if a column with the given name is already in the table, or
-   * if the number of rows in the column does not match the number of rows in the table
+   * if the number of rows in the column does not match the number of rows in the table. Regarding
+   * the latter rule, however, if the column is completely empty (size == 0), then it is filled with
+   * missing values to match the rowSize() as a convenience.
    */
   private void validateColumn(final Column<?> newColumn) {
     Preconditions.checkNotNull(
@@ -276,10 +283,18 @@ public class Table extends Relation implements Iterable<Row> {
 
   /**
    * Throws an IllegalArgumentException if the column size doesn't match the rowCount() for the
-   * table
+   * table. Columns that are completely empty, however, are initialized to match rowcount by filling
+   * with missing values
    */
   private void checkColumnSize(Column<?> newColumn) {
     if (columnCount() != 0) {
+      if (!isEmpty()) {
+        if (newColumn.isEmpty()) {
+          while (newColumn.size() < rowCount()) {
+            newColumn.appendMissing();
+          }
+        }
+      }
       Preconditions.checkArgument(
           newColumn.size() == rowCount(),
           "Column "
@@ -289,7 +304,9 @@ public class Table extends Relation implements Iterable<Row> {
   }
 
   /**
-   * Adds the given column to this table at the given position in the column list
+   * Adds the given column to this table at the given position in the column list. Columns must
+   * either be empty or have size() == the rowCount() of the table they're being added to. Column
+   * names in the table must remain unique.
    *
    * @param index Zero-based index into the column list
    * @param column Column to be added
@@ -388,6 +405,7 @@ public class Table extends Relation implements Iterable<Row> {
     return columnList;
   }
 
+  /** Returns the columns in this table as an array */
   public Column<?>[] columnArray() {
     return columnList.toArray(new Column<?>[columnCount()]);
   }
@@ -426,8 +444,6 @@ public class Table extends Relation implements Iterable<Row> {
   /**
    * Returns the index of the given column (its position in the list of columns)
    *
-   * <p>
-   *
    * @throws IllegalArgumentException if the column is not present in this table
    */
   public int columnIndex(Column<?> column) {
@@ -456,19 +472,9 @@ public class Table extends Relation implements Iterable<Row> {
     return columnList.stream().map(Column::name).collect(toList());
   }
 
-  /** Returns a table with the same columns as this table */
+  /** Returns a table with the same columns and data as this table */
   public Table copy() {
-    Table copy = new Table(name);
-    for (Column<?> column : columnList) {
-      copy.addColumns(column.emptyCopy(rowCount()));
-    }
-
-    int[] rows = new int[rowCount()];
-    for (int i = 0; i < rowCount(); i++) {
-      rows[i] = i;
-    }
-    Rows.copyRowsToTable(rows, this, copy);
-    return copy;
+    return inRange(0, this.rowCount());
   }
 
   /** Returns a table with the same columns as this table, but no data */
@@ -490,6 +496,57 @@ public class Table extends Relation implements Iterable<Row> {
       copy.addColumns(column.emptyCopy(rowSize));
     }
     return copy;
+  }
+
+  /**
+   * Copies the rows specified by Selection into newTable
+   *
+   * @param rows A Selection defining the rows to copy
+   * @param newTable The table to copy the rows into
+   */
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void copyRowsToTable(Selection rows, Table newTable) {
+    for (int columnIndex = 0; columnIndex < this.columnCount(); columnIndex++) {
+      Column oldColumn = this.column(columnIndex);
+      int r = 0;
+      for (int i : rows) {
+        newTable.column(columnIndex).set(r, oldColumn, i);
+        r++;
+      }
+    }
+  }
+
+  /**
+   * Copies the rows indicated by the row index values in the given array from oldTable to newTable
+   */
+  @SuppressWarnings({"rawtypes", "unchecked"})
+  public void copyRowsToTable(int[] rows, Table newTable) {
+    for (int columnIndex = 0; columnIndex < columnCount(); columnIndex++) {
+      Column oldColumn = column(columnIndex);
+      int r = 0;
+      for (int i : rows) {
+        newTable.column(columnIndex).set(r, oldColumn, i);
+        r++;
+      }
+    }
+  }
+
+  /**
+   * Returns {@code true} if the row @rowNumber in table1 holds the same data as the row at
+   * rowNumber in table2
+   */
+  public static boolean compareRows(int rowNumber, Table table1, Table table2) {
+    int columnCount = table1.columnCount();
+    boolean result;
+    for (int columnIndex = 0; columnIndex < columnCount; columnIndex++) {
+      ColumnType columnType = table1.column(columnIndex).type();
+      result =
+          columnType.compare(rowNumber, table2.column(columnIndex), table1.column(columnIndex));
+      if (!result) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /**
@@ -656,9 +713,9 @@ public class Table extends Relation implements Iterable<Row> {
     Table newTable = emptyCopy(rowCount());
 
     int[] newRows = rows();
-    IntArrays.parallelQuickSort(newRows, rowComparator);
+    IntArrays.mergeSort(newRows, rowComparator);
 
-    Rows.copyRowsToTable(newRows, this, newTable);
+    copyRowsToTable(newRows, newTable);
     return newTable;
   }
 
@@ -696,23 +753,32 @@ public class Table extends Relation implements Iterable<Row> {
     }
   }
 
+  /**
+   * Adds the given row to this table
+   *
+   * @deprecated Use {@link #append(Row)} instead.
+   */
+  @Deprecated
   public void addRow(Row row) {
     for (int i = 0; i < row.columnCount(); i++) {
       column(i).appendObj(row.getObject(i));
     }
   }
 
+  /** Returns a new Row object with its position set to the given zero-based row index. */
   public Row row(int rowIndex) {
     Row row = new Row(Table.this);
     row.at(rowIndex);
     return row;
   }
 
+  /** Returns a table containing the rows contained in the given array of row indices */
   public Table rows(int... rowNumbers) {
     Preconditions.checkArgument(Ints.max(rowNumbers) <= rowCount());
     return where(Selection.with(rowNumbers));
   }
 
+  /** Returns a table EXCLUDING the rows contained in the given array of row indices */
   public Table dropRows(int... rowNumbers) {
     Preconditions.checkArgument(Ints.max(rowNumbers) <= rowCount());
     Selection selection = Selection.withRange(0, rowCount()).andNot(Selection.with(rowNumbers));
@@ -720,8 +786,8 @@ public class Table extends Relation implements Iterable<Row> {
   }
 
   /**
-   * Retains the first rowCount rows if rowCount positive. Retains the last rowCount rows if
-   * rowCount negative.
+   * Returns a new table containing the first rowCount rows if rowCount positive. Returns the last
+   * rowCount rows if rowCount negative.
    */
   public Table inRange(int rowCount) {
     Preconditions.checkArgument(rowCount <= rowCount());
@@ -730,14 +796,18 @@ public class Table extends Relation implements Iterable<Row> {
     return where(Selection.withRange(rowStart, rowEnd));
   }
 
+  /**
+   * Returns a new table containing the rows contained in the range from rowStart inclusive to
+   * rowEnd exclusive
+   */
   public Table inRange(int rowStart, int rowEnd) {
     Preconditions.checkArgument(rowEnd <= rowCount());
     return where(Selection.withRange(rowStart, rowEnd));
   }
 
   /**
-   * Drops the first rowCount rows if rowCount positive. Drops the last rowCount rows if rowCount
-   * negative.
+   * Returns a new table EXCLUDING the first rowCount rows if rowCount positive. Drops the last
+   * rowCount rows if rowCount negative.
    */
   public Table dropRange(int rowCount) {
     Preconditions.checkArgument(rowCount <= rowCount());
@@ -746,34 +816,42 @@ public class Table extends Relation implements Iterable<Row> {
     return where(Selection.withRange(rowStart, rowEnd));
   }
 
+  /**
+   * Returns a table EXCLUDING the rows contained in the range from rowStart inclusive to rowEnd
+   * exclusive
+   */
   public Table dropRange(int rowStart, int rowEnd) {
     Preconditions.checkArgument(rowEnd <= rowCount());
     return where(Selection.withoutRange(0, rowCount(), rowStart, rowEnd));
   }
 
+  /** Returns a table containing the rows contained in the given Selection */
   public Table where(Selection selection) {
     Table newTable = this.emptyCopy(selection.size());
-    Rows.copyRowsToTable(selection, this, newTable);
+    copyRowsToTable(selection, newTable);
     return newTable;
   }
 
+  /** Returns a new Table made by applying the given function to this table */
   public Table where(Function<Table, Selection> selection) {
-    Table tempTable = where(selection.apply(this));
-    Table newTable = tempTable.emptyCopy(tempTable.rowCount());
-    Rows.copyRowsToTable(selection.apply(this), this, newTable);
-    return newTable;
+    return where(selection.apply(this));
   }
 
+  /**
+   * Returns a new Table made by EXCLUDING any rows returned when the given function is applied to
+   * this table
+   */
   public Table dropWhere(Function<Table, Selection> selection) {
     return where(not(selection));
   }
 
+  /** Returns a table EXCLUDING the rows contained in the given Selection */
   public Table dropWhere(Selection selection) {
     Selection opposite = new BitmapBackedSelection();
     opposite.addRange(0, rowCount());
     opposite.andNot(selection);
     Table newTable = this.emptyCopy(opposite.size());
-    Rows.copyRowsToTable(opposite, this, newTable);
+    copyRowsToTable(opposite, newTable);
     return newTable;
   }
 
@@ -839,24 +917,6 @@ public class Table extends Relation implements Iterable<Row> {
     return StandardTableSliceGroup.create(this, columns);
   }
 
-  @Override
-  public Table structure() {
-    Table t = new Table("Structure of " + name());
-
-    IntColumn index = IntColumn.indexColumn("Index", columnCount(), 0);
-    StringColumn columnName = StringColumn.create("Column Name", columnCount());
-    StringColumn columnType = StringColumn.create("Column Type", columnCount());
-    t.addColumns(index);
-    t.addColumns(columnName);
-    t.addColumns(columnType);
-    for (int i = 0; i < columnCount(); i++) {
-      Column<?> column = columnList.get(i);
-      columnType.set(i, column.type().name());
-      columnName.set(i, columnNames().get(i));
-    }
-    return t;
-  }
-
   /** Returns the unique records in this table Note: Uses a lot of memory for a sort */
   public Table dropDuplicateRows() {
 
@@ -864,8 +924,8 @@ public class Table extends Relation implements Iterable<Row> {
     Table temp = emptyCopy();
 
     for (int row = 0; row < rowCount(); row++) {
-      if (temp.isEmpty() || !Rows.compareRows(row, sorted, temp)) {
-        Rows.appendRowToTable(row, sorted, temp);
+      if (temp.isEmpty() || !compareRows(row, sorted, temp)) {
+        temp.append(sorted.row(row));
       }
     }
     return temp;
@@ -888,32 +948,143 @@ public class Table extends Relation implements Iterable<Row> {
     Selection notMissing = Selection.withRange(0, rowCount());
     notMissing.andNot(missing);
     Table temp = emptyCopy(notMissing.size());
-    Rows.copyRowsToTable(notMissing, this, temp);
+    copyRowsToTable(notMissing, temp);
     return temp;
   }
 
+  /**
+   * Returns a new table containing copies of the selected columns from this table
+   *
+   * @param columns The columns to copy into the new table
+   * @see #retainColumns(Column[])
+   */
+  public Table selectColumns(Column<?>... columns) {
+    Table t = Table.create(this.name);
+    for (Column<?> c : columns) {
+      t.addColumns(c.copy());
+    }
+    return t;
+  }
+
+  /**
+   * Returns a new table containing copies of the selected columns from this table
+   *
+   * @param columns The columns to copy into the new table
+   * @see #retainColumns(Column[])
+   * @deprecated Use {@link #selectColumns(Column[])} instead
+   */
   public Table select(Column<?>... columns) {
-    return new Table(this.name, columns);
+    return selectColumns(columns);
   }
 
+  /**
+   * Returns a new table containing copies of the selected columns from this table
+   *
+   * @param columnNames The names of the columns to include
+   * @see #retainColumns(String[])
+   */
+  public Table selectColumns(String... columnNames) {
+    Table t = Table.create(this.name);
+    for (String s : columnNames) {
+      t.addColumns(column(s).copy());
+    }
+    return t;
+  }
+
+  /**
+   * Returns a new table containing copies of the selected columns from this table
+   *
+   * @param columnNames The names of the columns to include
+   * @see #retainColumns(String[])
+   * @deprecated Use {@link #selectColumns(String[])} instead
+   */
   public Table select(String... columnNames) {
-    return Table.create(this.name, columns(columnNames).toArray(new Column<?>[0]));
+    return selectColumns(columnNames);
   }
 
-  /** Removes the given columns */
+  /**
+   * Returns a new table containing copies of all the columns from this table, except those at the
+   * given indexes
+   *
+   * @param columnIndexes The indexes of the columns to exclude
+   * @see #removeColumns(int[])
+   */
+  public Table rejectColumns(int... columnIndexes) {
+    Table t = Table.create(this.name);
+    RoaringBitmap bm = new RoaringBitmap();
+    bm.add((long) 0, columnCount());
+    RoaringBitmap excluded = new RoaringBitmap();
+    excluded.add(columnIndexes);
+    bm.andNot(excluded);
+    for (int i : bm) {
+      t.addColumns(column(i).copy());
+    }
+    return t;
+  }
+
+  /**
+   * Returns a new table containing copies of all the columns from this table, except those named in
+   * the argument
+   *
+   * @param columnNames The names of the columns to exclude
+   * @see #removeColumns(int[])
+   */
+  public Table rejectColumns(String... columnNames) {
+    IntArrayList indices = new IntArrayList();
+    for (String s : columnNames) {
+      indices.add(columnIndex(s));
+    }
+    return rejectColumns(indices.toIntArray());
+  }
+
+  /**
+   * Returns a new table containing copies of all the columns from this table, except those named in
+   * the argument
+   *
+   * @param columns The names of the columns to exclude
+   * @see #removeColumns(int[])
+   */
+  public Table rejectColumns(Column<?>... columns) {
+    IntArrayList indices = new IntArrayList();
+    for (Column<?> c : columns) {
+      indices.add(columnIndex(c));
+    }
+    return rejectColumns(indices.toIntArray());
+  }
+
+  /**
+   * Returns a new table containing copies of the columns at the given indexes
+   *
+   * @param columnIndexes The indexes of the columns to include
+   * @see #retainColumns(int[])
+   */
+  public Table selectColumns(int... columnIndexes) {
+    Table t = Table.create(this.name);
+    RoaringBitmap bm = new RoaringBitmap();
+    bm.add(columnIndexes);
+    for (int i : bm) {
+      t.addColumns(column(i).copy());
+    }
+    return t;
+  }
+
+  /** Removes the given columns from this table and returns this table */
   @Override
   public Table removeColumns(Column<?>... columns) {
     columnList.removeAll(Arrays.asList(columns));
     return this;
   }
 
-  /** Removes the given columns with missing values */
+  /** Removes all columns with missing values from this table, and returns this table. */
   public Table removeColumnsWithMissingValues() {
     removeColumns(columnList.stream().filter(x -> x.countMissing() > 0).toArray(Column<?>[]::new));
     return this;
   }
 
-  /** Removes all columns except for those given in the argument from this table */
+  /**
+   * Removes all columns except for those given in the argument from this table and returns this
+   * table
+   */
   public Table retainColumns(Column<?>... columns) {
     List<Column<?>> retained = Arrays.asList(columns);
     columnList.clear();
@@ -921,7 +1092,21 @@ public class Table extends Relation implements Iterable<Row> {
     return this;
   }
 
-  /** Removes all columns except for those given in the argument from this table */
+  /**
+   * Removes all columns except for those given in the argument from this table and returns this
+   * table
+   */
+  public Table retainColumns(int... columnIndexes) {
+    List<Column<?>> retained = columns(columnIndexes);
+    columnList.clear();
+    columnList.addAll(retained);
+    return this;
+  }
+
+  /**
+   * Removes all columns except for those given in the argument from this table and returns this
+   * table
+   */
   public Table retainColumns(String... columnNames) {
     List<Column<?>> retained = columns(columnNames);
     columnList.clear();
@@ -929,13 +1114,38 @@ public class Table extends Relation implements Iterable<Row> {
     return this;
   }
 
+  /** Returns this table after adding the data from the argument */
   @SuppressWarnings({"rawtypes", "unchecked"})
-  public Table append(Table tableToAppend) {
+  public Table append(Relation tableToAppend) {
     for (final Column column : columnList) {
       final Column columnToAppend = tableToAppend.column(column.name());
       column.append(columnToAppend);
     }
     return this;
+  }
+
+  /**
+   * Appends the given row to this table and returns the table.
+   *
+   * <p>Note: The table is modified in-place TODO: Performance
+   */
+  public Table append(Row row) {
+    for (int i = 0; i < row.columnCount(); i++) {
+      column(i).appendObj(row.getObject(i));
+    }
+    return this;
+  }
+
+  /** Removes the columns with the given names from this table and returns this table */
+  @Override
+  public Table removeColumns(String... columns) {
+    return (Table) super.removeColumns(columns);
+  }
+
+  /** Removes the columns at the given indices from this table and returns this table */
+  @Override
+  public Table removeColumns(int... columnIndexes) {
+    return (Table) super.removeColumns(columnIndexes);
   }
 
   /**
@@ -972,24 +1182,59 @@ public class Table extends Relation implements Iterable<Row> {
     return this;
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(String columName, AggregateFunction<?, ?>... functions) {
     return summarize(column(columName), functions);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(List<String> columnNames, AggregateFunction<?, ?>... functions) {
     return new Summarizer(this, columnNames, functions);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(
       String numericColumn1Name, String numericColumn2Name, AggregateFunction<?, ?>... functions) {
     return summarize(column(numericColumn1Name), column(numericColumn2Name), functions);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(
       String col1Name, String col2Name, String col3Name, AggregateFunction<?, ?>... functions) {
     return summarize(column(col1Name), column(col2Name), column(col3Name), functions);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(
       String col1Name,
       String col2Name,
@@ -1000,15 +1245,36 @@ public class Table extends Relation implements Iterable<Row> {
         column(col1Name), column(col2Name), column(col3Name), column(col4Name), functions);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(Column<?> numberColumn, AggregateFunction<?, ?>... function) {
     return new Summarizer(this, numberColumn, function);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(
       Column<?> column1, Column<?> column2, AggregateFunction<?, ?>... function) {
     return new Summarizer(this, column1, column2, function);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(
       Column<?> column1,
       Column<?> column2,
@@ -1017,6 +1283,13 @@ public class Table extends Relation implements Iterable<Row> {
     return new Summarizer(this, column1, column2, column3, function);
   }
 
+  /**
+   * Returns an {@link Summarizer} that can be used to summarize the column with the given name(s)
+   * using the given functions. This object implements reduce/aggregation operations on a table.
+   *
+   * <p>Summarizer can return the results as a table using the Summarizer:apply() method. Summarizer
+   * can compute sub-totals using the Summarizer:by() method.
+   */
   public Summarizer summarize(
       Column<?> column1,
       Column<?> column2,
@@ -1029,16 +1302,26 @@ public class Table extends Relation implements Iterable<Row> {
   /**
    * Returns a table with n by m + 1 cells. The first column contains labels, the other cells
    * contains the counts for every unique combination of values from the two specified columns in
-   * this table
+   * this table.
    */
   public Table xTabCounts(String column1Name, String column2Name) {
     return CrossTab.counts(this, categoricalColumn(column1Name), categoricalColumn(column2Name));
   }
 
+  /**
+   * Returns a table with n by m + 1 cells. The first column contains labels, the other cells
+   * contains the row percents for every unique combination of values from the two specified columns
+   * in this table. Row percents total to 100% in every row.
+   */
   public Table xTabRowPercents(String column1Name, String column2Name) {
     return CrossTab.rowPercents(this, column1Name, column2Name);
   }
 
+  /**
+   * Returns a table with n by m + 1 cells. The first column contains labels, the other cells
+   * contains the column percents for every unique combination of values from the two specified
+   * columns in this table. Column percents total to 100% in every column.
+   */
   public Table xTabColumnPercents(String column1Name, String column2Name) {
     return CrossTab.columnPercents(this, column1Name, column2Name);
   }
@@ -1053,8 +1336,9 @@ public class Table extends Relation implements Iterable<Row> {
   }
 
   /**
-   * Returns a table with two columns, the first contains a value each unique value in the argument,
-   * and the second contains the proportion of observations having that value
+   * TODO: Rename the method to xTabProportions, deprecating this version Returns a table with two
+   * columns, the first contains a value each unique value in the argument, and the second contains
+   * the proportion of observations having that value
    */
   public Table xTabPercents(String column1Name) {
     return CrossTab.percents(this, column1Name);
@@ -1072,22 +1356,28 @@ public class Table extends Relation implements Iterable<Row> {
    * Returns a table containing two columns, the grouping column, and a column named "Count" that
    * contains the counts for each grouping column value
    */
-  public Table countBy(CategoricalColumn<?> groupingColumn) {
-    return groupingColumn.countByCategory();
+  public Table countBy(CategoricalColumn<?>... groupingColumns) {
+    String[] names = new String[groupingColumns.length];
+    for (int i = 0; i < groupingColumns.length; i++) {
+      names[i] = groupingColumns[i].name();
+    }
+    return countBy(names);
   }
 
   /**
-   * Returns a table containing two columns, the grouping column, and a column named "Count" that
-   * contains the counts for each grouping column value
+   * Returns a table containing a column for each grouping column, and a column named "Count" that
+   * contains the counts for each combination of grouping column values
    *
-   * @param categoricalColumnName The name of a CategoricalColumn in this table
-   * @return A table containing counts of rows grouped by the categorical column
+   * @param categoricalColumnNames The name(s) of one or more CategoricalColumns in this table
+   * @return A table containing counts of rows grouped by the categorical columns
    * @throws ClassCastException if the categoricalColumnName parameter is the name of a column that
    *     does not * implement categorical
    */
-  public Table countBy(String categoricalColumnName) {
-    CategoricalColumn<?> groupingColumn = categoricalColumn(categoricalColumnName);
-    return groupingColumn.countByCategory();
+  public Table countBy(String... categoricalColumnNames) {
+    Table t = summarize(column(0).name(), count).by(categoricalColumnNames);
+    t.column(t.columnCount() - 1).setName("Count");
+    t.replaceColumn("Count", (t.doubleColumn("Count").asIntColumn()));
+    return t;
   }
 
   /**
@@ -1100,6 +1390,7 @@ public class Table extends Relation implements Iterable<Row> {
     return new DataFrameJoiner(this, columnNames);
   }
 
+  /** Returns a table containing the number of missing values in each column in this table */
   public Table missingValueCounts() {
     return summarize(columnNames(), countMissing).apply();
   }
@@ -1186,6 +1477,7 @@ public class Table extends Relation implements Iterable<Row> {
     };
   }
 
+  /** Returns the rows in this table as a Stream */
   public Stream<Row> stream() {
     return Streams.stream(iterator());
   }
@@ -1283,7 +1575,7 @@ public class Table extends Relation implements Iterable<Row> {
 
   private ColumnType validateTableHasSingleColumnType(int startingColumn) {
     // If all columns are of the same type
-    ColumnType[] columnTypes = this.columnTypes();
+    ColumnType[] columnTypes = this.typeArray();
     long distinctColumnTypesCount =
         Arrays.stream(columnTypes).skip(startingColumn).distinct().count();
     if (distinctColumnTypesCount > 1) {
@@ -1348,7 +1640,6 @@ public class Table extends Relation implements Iterable<Row> {
    *     columns must have the same type
    * @param dropMissing drop any row where the value is missing
    */
-  @Beta
   public Table melt(
       List<String> idVariables, List<NumericColumn<?>> measuredVariables, Boolean dropMissing) {
 
@@ -1447,7 +1738,6 @@ public class Table extends Relation implements Iterable<Row> {
    *
    * <p>Cast function details: {@see https://www.jstatsoft.org/article/view/v021i12}
    */
-  @Beta
   public Table cast() {
     StringColumn variableNames = stringColumn(MELT_VARIABLE_COLUMN_NAME);
     List<Column<?>> idColumns =

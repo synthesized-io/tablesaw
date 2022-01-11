@@ -16,7 +16,6 @@ package tech.tablesaw.io.fixed;
 
 import com.univocity.parsers.fixed.FixedWidthFormat;
 import com.univocity.parsers.fixed.FixedWidthWriterSettings;
-import java.io.IOException;
 import java.io.Writer;
 import javax.annotation.concurrent.Immutable;
 import tech.tablesaw.api.Table;
@@ -65,7 +64,7 @@ public final class FixedWidthWriter implements DataWriter<FixedWidthWriteOptions
     } finally {
       if (fixedWidthWriter != null) {
         fixedWidthWriter.flush();
-        fixedWidthWriter.close();
+        if (options.autoClose()) fixedWidthWriter.close();
       }
     }
   }
@@ -97,6 +96,9 @@ public final class FixedWidthWriter implements DataWriter<FixedWidthWriteOptions
 
   protected FixedWidthWriterSettings fixedWidthWriterSettings(FixedWidthWriteOptions options) {
     FixedWidthWriterSettings settings = new FixedWidthWriterSettings();
+    if (options.columnSpecs() != null) {
+      settings = new FixedWidthWriterSettings(options.columnSpecs());
+    }
 
     if (options.autoConfigurationEnabled()) {
       settings.setAutoConfigurationEnabled(options.autoConfigurationEnabled());
@@ -156,7 +158,7 @@ public final class FixedWidthWriter implements DataWriter<FixedWidthWriteOptions
   }
 
   @Override
-  public void write(Table table, Destination dest) throws IOException {
+  public void write(Table table, Destination dest) {
     write(table, FixedWidthWriteOptions.builder(dest).build());
   }
 }

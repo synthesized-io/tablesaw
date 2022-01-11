@@ -21,6 +21,7 @@ import static tech.tablesaw.columns.strings.StringPredicates.isEqualToIgnoringCa
 
 import com.google.common.base.Joiner;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -28,6 +29,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tech.tablesaw.TestDataUtil;
 import tech.tablesaw.columns.strings.StringColumnFormatter;
+import tech.tablesaw.columns.strings.StringParser;
 import tech.tablesaw.io.csv.CsvReadOptions;
 import tech.tablesaw.selection.Selection;
 
@@ -107,6 +109,36 @@ public class TextColumnTest {
 
     Table joined = t1.joinOn("TIME").fullOuter(t2);
     assertEquals(3, joined.columnCount());
+  }
+
+  @Test
+  void appendCellAsterisk() {
+    final TextColumn sc = TextColumn.create("sc");
+    StringParser parser = new StringParser(ColumnType.TEXT);
+    parser.setMissingValueStrings(new ArrayList<>());
+    sc.appendCell("*", parser);
+    assertEquals(0, sc.countMissing());
+  }
+
+  @Test
+  void appendAsterisk() {
+    final TextColumn sc = TextColumn.create("sc");
+    sc.append("*");
+    assertEquals(0, sc.countMissing());
+  }
+
+  @Test
+  public void testCustomParser() {
+    // Just do enough to ensure the parser is wired up correctly
+    final TextColumn sc = TextColumn.create("sc");
+    StringParser customParser = new StringParser(ColumnType.TEXT);
+    customParser.setMissingValueStrings(Arrays.asList("not here"));
+    sc.setParser(customParser);
+
+    sc.appendCell("not here");
+    assertTrue(sc.isMissing(sc.size() - 1));
+    sc.appendCell("*");
+    assertFalse(sc.isMissing(sc.size() - 1));
   }
 
   @Test
@@ -529,5 +561,21 @@ public class TextColumnTest {
 
     assertEquals(3, col1.countUnique());
     assertEquals(3, col1.unique().size());
+  }
+
+  /** Test that we can append both text and string columns to a text column */
+  @Test
+  void appendStringColumn() {
+    TextColumn col1 = TextColumn.create("col1");
+    col1.append("1");
+    TextColumn col2 = TextColumn.create("col2");
+    col2.append("2");
+    StringColumn col3 = StringColumn.create("col3");
+    col3.append("3");
+    assertEquals(1, col1.size());
+    col1.append(col2);
+    assertEquals(2, col1.size());
+    col1.append(col3);
+    assertEquals(3, col1.size());
   }
 }

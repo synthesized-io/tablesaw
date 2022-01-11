@@ -21,6 +21,8 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static tech.tablesaw.columns.strings.StringPredicates.isEqualToIgnoringCase;
 
+import com.google.common.collect.Lists;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Set;
@@ -29,6 +31,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tech.tablesaw.TestDataUtil;
 import tech.tablesaw.columns.strings.StringColumnFormatter;
+import tech.tablesaw.columns.strings.StringParser;
 import tech.tablesaw.selection.Selection;
 
 class StringColumnTest {
@@ -61,6 +64,35 @@ class StringColumnTest {
   void testAppendObj2() {
     final StringColumn sc = StringColumn.create("sc", Arrays.asList("a", "b", "c", "a"));
     assertArrayEquals(sc.asList().toArray(), sc.asObjectArray());
+  }
+
+  @Test
+  void appendAsterisk() {
+    final StringColumn sc = StringColumn.create("sc");
+    sc.append("*");
+    assertEquals(0, sc.countMissing());
+    StringParser parser = new StringParser(ColumnType.TEXT);
+    parser.setMissingValueStrings(new ArrayList<>());
+    sc.appendCell("*", parser);
+    assertEquals(0, sc.countMissing());
+    StringParser parser2 = new StringParser(ColumnType.TEXT);
+    parser2.setMissingValueStrings(Lists.newArrayList("45"));
+    sc.appendCell("45", parser2);
+    assertEquals(1, sc.countMissing());
+  }
+
+  @Test
+  public void testCustomParser() {
+    // Just do enough to ensure the parser is wired up correctly
+    final StringColumn sc = StringColumn.create("sc");
+    StringParser customParser = new StringParser(ColumnType.STRING);
+    customParser.setMissingValueStrings(Arrays.asList("not here"));
+    sc.setParser(customParser);
+
+    sc.appendCell("not here");
+    assertTrue(sc.isMissing(sc.size() - 1));
+    sc.appendCell("*");
+    assertFalse(sc.isMissing(sc.size() - 1));
   }
 
   @Test
@@ -720,6 +752,28 @@ class StringColumnTest {
   }
 
   @Test
+  public void isIn() {
+    String[] data = {"1", "1", "2", "2", "3", "4"};
+    StringColumn col = StringColumn.create("col", data);
+    Table t = Table.create("t", col);
+    String[] data1 = {"1", "2"};
+    StringColumn col1 = StringColumn.create("col1", data1);
+    Table t2 = t.where(t.stringColumn("col").isIn(col1));
+    assertEquals(4, t2.rowCount());
+  }
+
+  @Test
+  public void isNotIn() {
+    String[] data = {"1", "1", "2", "2", "3", "4"};
+    StringColumn col = StringColumn.create("col", data);
+    Table t = Table.create("t", col);
+    String[] data1 = {"1", "2"};
+    StringColumn col1 = StringColumn.create("col1", data1);
+    Table t2 = t.where(t.stringColumn("col").isNotIn(col1));
+    assertEquals(2, t2.rowCount());
+  }
+
+  @Test
   public void countUniqueWithMissing() {
     StringColumn col1 = StringColumn.create("col1");
     col1.append("1");
@@ -744,5 +798,21 @@ class StringColumnTest {
     assertEquals("Value 4", summary.getUnformatted(2, 1));
     assertEquals("Top Freq.", summary.getUnformatted(3, 0));
     assertEquals("1", summary.getUnformatted(3, 1));
+  }
+
+  /** Test that we can append both text and string columns to a string column */
+  @Test
+  void appendTextColumn() {
+    StringColumn col1 = StringColumn.create("col1");
+    col1.append("1");
+    TextColumn col2 = TextColumn.create("col2");
+    col2.append("2");
+    StringColumn col3 = StringColumn.create("col3");
+    col3.append("3");
+    assertEquals(1, col1.size());
+    col1.append(col2);
+    assertEquals(2, col1.size());
+    col1.append(col3);
+    assertEquals(3, col1.size());
   }
 }
