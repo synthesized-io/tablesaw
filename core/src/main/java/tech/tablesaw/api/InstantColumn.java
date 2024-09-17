@@ -25,6 +25,8 @@ import it.unimi.dsi.fastutil.longs.LongComparators;
 import it.unimi.dsi.fastutil.longs.LongIterator;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongSet;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.ByteBuffer;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -259,6 +261,19 @@ public class InstantColumn extends AbstractColumn<InstantColumn, Instant>
     if (obj instanceof Timestamp) {
       Timestamp timestamp = (Timestamp) obj;
       return append(timestamp.toInstant());
+    }
+    if (obj.getClass().getName().equals("oracle.sql.TIMESTAMP")) {
+      try {
+        Method method = obj.getClass().getDeclaredMethod("timestampValue");
+        Timestamp timestamp = (Timestamp) method.invoke(obj);
+        return append(timestamp.toInstant());
+      } catch (NoSuchMethodException | IllegalAccessException e) {
+        throw new RuntimeException("Cannot get timestamp for " + obj.getClass().getName(), e);
+      } catch (InvocationTargetException e) {
+        throw new RuntimeException(
+            "Error while getting timestamp from " + obj.getClass().getName(),
+            e.getTargetException());
+      }
     }
     throw new IllegalArgumentException(
         "Cannot append " + obj.getClass().getName() + " to DateTimeColumn");

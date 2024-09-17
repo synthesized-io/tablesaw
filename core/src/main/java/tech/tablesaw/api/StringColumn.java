@@ -497,11 +497,26 @@ public class StringColumn extends AbstractStringColumn<StringColumn> {
     if (obj == null) {
       return appendMissing();
     }
-    if (!(obj instanceof String)) {
-      throw new IllegalArgumentException(
-          "Cannot append " + obj.getClass().getName() + " to StringColumn");
+    if (obj instanceof String) {
+      return append((String) obj);
     }
-    return append((String) obj);
+    if (obj instanceof java.util.UUID) {
+      return append(obj.toString());
+    }
+    if (obj.getClass().getName().equals("org.postgresql.util.PGobject")) {
+      return append(obj.toString());
+    }
+    if (obj.getClass().getName().equals("org.postgresql.jdbc.PgArray")) {
+      return append(obj.toString());
+    }
+    if (obj.getClass().getName().equals("oracle.sql.CLOB")) {
+      return append(obj.toString());
+    }
+    if (obj.getClass().getName().equals("oracle.sql.BLOB")) {
+      return append(obj.toString());
+    }
+    throw new IllegalArgumentException(
+        "Cannot append " + obj.getClass().getName() + " to StringColumn");
   }
 
   /** {@inheritDoc} */
